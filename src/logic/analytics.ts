@@ -46,8 +46,9 @@ export function accountBalance(account: Account, transactions: Transaction[]): A
   for (const tx of transactions) {
     if (tx.account_id !== account.id) continue;
     operations++;
-    if (tx.is_transfer) continue;
     if (toDate(tx.occurred_at).getTime() <= since) continue;
+    // Переводы между счетами исключаются из статистики доходов и расходов,
+    // но баланс конкретного счёта они меняют: деньги реально ушли с карты на другой счёт.
     delta += tx.type === 'income' ? tx.amount : -tx.amount;
   }
 
@@ -246,12 +247,23 @@ export interface GoalForecast {
 }
 
 /**
- * Среднемесячный «свободный остаток»: доходы минус расходы за последние `months` месяцев
- * с фактическими данными. Если данных нет — берём план из профиля (аванс + зарплата).
+ * Отбрасывает текущий (незаконченный) месяц: зарплата обычно приходит в середине и в конце,
+ * а траты идут с первого числа, поэтому неполный месяц всегда выглядит убыточным и тянет
+ * все средние вниз. Если других месяцев нет, оставляем как есть — лучше так, чем ничего.
+ */
+export function completedMonths(stats: MonthStat[]): MonthStat[] {
+  const current = monthKey(new Date());
+  const finished = stats.filter((s) => s.key !== current);
+  return finished.length > 0 ? finished : stats;
+}
+
+/**
+ * Среднемесячный «свободный остаток»: доходы минус расходы за последние `months`
+ * ЗАВЕРШЁННЫХ месяцев. Если данных нет — берём план из профиля (аванс + зарплата).
  */
 export function averageMonthlyNet(snapshot: Snapshot, months = 3): number {
-  const stats = monthlyStats(snapshot.transactions, 12).filter(
-    (s) => s.income > 0 || s.expense > 0,
+  const stats = completedMonths(
+    monthlyStats(snapshot.transactions, 13).filter((s) => s.income > 0 || s.expense > 0),
   );
   const recent = stats.slice(-months);
   if (recent.length > 0) {
@@ -262,7 +274,9 @@ export function averageMonthlyNet(snapshot: Snapshot, months = 3): number {
 }
 
 export function averageMonthlyExpense(snapshot: Snapshot, months = 3): number {
-  const stats = monthlyStats(snapshot.transactions, 12).filter((s) => s.expense > 0);
+  const stats = completedMonths(
+    monthlyStats(snapshot.transactions, 13).filter((s) => s.expense > 0),
+  );
   const recent = stats.slice(-months);
   if (recent.length === 0) return 0;
   return recent.reduce((sum, s) => sum + s.expense, 0) / recent.length;

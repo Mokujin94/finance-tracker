@@ -4,6 +4,7 @@ import type { Snapshot } from '../types';
 import {
   averageMonthlyExpense,
   categoryBreakdown,
+  completedMonths,
   debtTotals,
   debtViews,
   goalForecasts,
@@ -52,7 +53,10 @@ const WEIGHTS = {
 };
 
 export function computeRating(snapshot: Snapshot): Rating {
-  const stats = monthlyStats(snapshot.transactions, 12).filter((s) => s.income > 0 || s.expense > 0);
+  // Текущий месяц не берём: он неполный, зарплата в нём могла ещё не прийти
+  const stats = completedMonths(
+    monthlyStats(snapshot.transactions, 13).filter((s) => s.income > 0 || s.expense > 0),
+  );
   const recent = stats.slice(-3);
   const profile = snapshot.profile;
   const plannedIncome = profile ? profile.advance_amount + profile.salary_amount : 0;
