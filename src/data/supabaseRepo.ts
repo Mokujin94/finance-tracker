@@ -20,12 +20,30 @@ function client() {
   return supabase;
 }
 
+/** PostgREST отдаёт не больше 1000 строк за запрос, поэтому читаем страницами. */
+const PAGE_SIZE = 1000;
+
 async function selectAll<T>(table: string, userId: string, orderBy?: string): Promise<T[]> {
-  let query = client().from(table).select('*').eq('user_id', userId);
-  if (orderBy) query = query.order(orderBy, { ascending: false });
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []) as T[];
+  const rows: T[] = [];
+
+  for (let page = 0; ; page++) {
+    let query = client()
+      .from(table)
+      .select('*')
+      .eq('user_id', userId)
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    if (orderBy) query = query.order(orderBy, { ascending: false });
+    // Вторичная сортировка по id: при одинаковом времени порядок иначе не гарантирован,
+    // и строки могли бы перескакивать между страницами — часть пропала бы, часть задвоилась.
+    query = query.order('id', { ascending: true });
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE) return rows;
+  }
 }
 
 /** Облачный режим: Postgres в Supabase, доступ ограничен RLS-политиками (user_id = auth.uid()). */

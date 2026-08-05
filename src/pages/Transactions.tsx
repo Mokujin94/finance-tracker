@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Card, Empty, Input, Select } from '../components/ui';
+import { Button, Card, Empty, Input, Select } from '../components/ui';
 import { fmtDay, monthKey, monthLabel } from '../lib/dates';
 import { money } from '../lib/format';
 import { useData } from '../store/data';
 
 export default function Transactions() {
   const { snapshot, setTransactionCategory, setTransactionTransfer, deleteTransaction } = useData();
-  const [month, setMonth] = useState<string>(monthKey(new Date()));
+  // Не привязываемся к текущему месяцу: выписку часто грузят за прошлые периоды,
+  // и страница открывалась пустой, хотя операции есть.
+  const [month, setMonth] = useState<string>('all');
   const [type, setType] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
   const [categoryId, setCategoryId] = useState<string>('all');
   const [query, setQuery] = useState('');
@@ -99,7 +101,32 @@ export default function Transactions() {
 
       <Card>
         {filtered.length === 0 ? (
-          <Empty title="Операций не найдено" hint="Измените фильтры или загрузите выписку" />
+          <div>
+            <Empty
+              title="Операций не найдено"
+              hint={
+                snapshot.transactions.length > 0
+                  ? `Всего операций: ${snapshot.transactions.length}, но под фильтры не подходит ни одна`
+                  : 'Загрузите выписку на вкладке «Импорт»'
+              }
+            />
+            {snapshot.transactions.length > 0 && (
+              <div className="mt-3 flex justify-center">
+                <Button
+                  variant="soft"
+                  onClick={() => {
+                    setMonth('all');
+                    setType('all');
+                    setCategoryId('all');
+                    setAccountId('all');
+                    setQuery('');
+                  }}
+                >
+                  Сбросить фильтры
+                </Button>
+              </div>
+            )}
+          </div>
         ) : (
           <ul className="divide-y divide-slate-100">
             {filtered.slice(0, 300).map((tx) => (
