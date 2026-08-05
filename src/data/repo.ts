@@ -1,6 +1,7 @@
 import type { Profile, Snapshot, Transaction, UUID } from '../types';
 
 export type TableName =
+  | 'accounts'
   | 'categories'
   | 'transactions'
   | 'imports'
@@ -41,6 +42,7 @@ export function newId(): UUID {
 export function emptySnapshot(): Snapshot {
   return {
     profile: null,
+    accounts: [],
     categories: [],
     transactions: [],
     imports: [],

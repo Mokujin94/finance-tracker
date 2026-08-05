@@ -20,6 +20,7 @@ function write(userId: string, data: RawStore): void {
 }
 
 const FIELD: Record<TableName, keyof Snapshot> = {
+  accounts: 'accounts',
   categories: 'categories',
   transactions: 'transactions',
   imports: 'imports',

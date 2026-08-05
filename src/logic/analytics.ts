@@ -1,6 +1,7 @@
 import { addDays, addMonths, differenceInCalendarDays } from 'date-fns';
-import { monthKey, monthRange, nextPaymentDate, toDate } from '../lib/dates';
+import { isPaymentToday, monthKey, monthRange, nextPaymentDate, toDate } from '../lib/dates';
 import type {
+  Account,
   Category,
   Debt,
   DebtPayment,
@@ -21,18 +22,47 @@ export function realTransactions(transactions: Transaction[]): Transaction[] {
   return transactions.filter((tx) => !tx.is_transfer);
 }
 
+export interface AccountBalance {
+  account: Account;
+  /** Остаток, названный пользователем */
+  start: number;
+  /** Изменение с момента, на который назван остаток */
+  delta: number;
+  balance: number;
+  /** Сколько операций привязано к счёту */
+  operations: number;
+}
+
 /**
- * Текущий баланс = остаток, названный пользователем, плюс операции строго ПОСЛЕ момента,
- * на который он назван. Операции до этого момента банк уже учёл в названной сумме —
- * если считать их снова, импорт старой выписки «съест» баланс.
+ * Баланс одного счёта = остаток, названный пользователем, плюс операции этого счёта
+ * строго ПОСЛЕ момента, на который остаток назван. Операции до этого момента банк уже
+ * учёл в названной сумме — если считать их снова, импорт старой выписки «съест» баланс.
  */
-export function currentBalance(profile: Profile | null, transactions: Transaction[]): number {
-  if (!profile) return 0;
-  const since = toDate(profile.balance_as_of).getTime();
-  return realTransactions(transactions).reduce((sum, tx) => {
-    if (toDate(tx.occurred_at).getTime() <= since) return sum;
-    return sum + (tx.type === 'income' ? tx.amount : -tx.amount);
-  }, profile.balance_start);
+export function accountBalance(account: Account, transactions: Transaction[]): AccountBalance {
+  const since = toDate(account.balance_as_of).getTime();
+  let delta = 0;
+  let operations = 0;
+
+  for (const tx of transactions) {
+    if (tx.account_id !== account.id) continue;
+    operations++;
+    if (tx.is_transfer) continue;
+    if (toDate(tx.occurred_at).getTime() <= since) continue;
+    delta += tx.type === 'income' ? tx.amount : -tx.amount;
+  }
+
+  return { account, start: account.balance_start, delta, balance: account.balance_start + delta, operations };
+}
+
+export function accountBalances(accounts: Account[], transactions: Transaction[]): AccountBalance[] {
+  return accounts
+    .filter((account) => !account.archived)
+    .map((account) => accountBalance(account, transactions));
+}
+
+/** Суммарный баланс по всем активным счетам. */
+export function totalBalance(accounts: Account[], transactions: Transaction[]): number {
+  return accountBalances(accounts, transactions).reduce((sum, item) => sum + item.balance, 0);
 }
 
 /* ------------------------- Помесячная статистика ------------------------ */
@@ -103,7 +133,7 @@ export function categoryBreakdown(
 /* --------------------------- До зарплаты/аванса ------------------------- */
 
 export interface PayPeriod {
-  /** Ближайшая выплата */
+  /** Ближайшая будущая выплата */
   date: Date;
   label: 'Аванс' | 'Зарплата';
   amount: number;
@@ -112,27 +142,26 @@ export interface PayPeriod {
   onHand: number;
   /** Сколько можно тратить в день, чтобы дожить до выплаты */
   perDay: number;
+  /** Сегодня день выплаты — деньги считаются пришедшими с 00:00 */
+  paidToday: 'Аванс' | 'Зарплата' | null;
 }
 
 export function payPeriod(profile: Profile | null, balance: number): PayPeriod | null {
   if (!profile) return null;
   const now = new Date();
-  const advance = nextPaymentDate(
-    {
-      day: profile.advance_day,
-      isLastDay: profile.advance_is_last_day,
-      shiftFromWeekend: profile.shift_weekend_payouts,
-    },
-    now,
-  );
-  const salary = nextPaymentDate(
-    {
-      day: profile.salary_day,
-      isLastDay: profile.salary_is_last_day,
-      shiftFromWeekend: profile.shift_weekend_payouts,
-    },
-    now,
-  );
+  const advanceRule = {
+    day: profile.advance_day,
+    isLastDay: profile.advance_is_last_day,
+    shiftFromWeekend: profile.shift_weekend_payouts,
+  };
+  const salaryRule = {
+    day: profile.salary_day,
+    isLastDay: profile.salary_is_last_day,
+    shiftFromWeekend: profile.shift_weekend_payouts,
+  };
+
+  const advance = nextPaymentDate(advanceRule, now);
+  const salary = nextPaymentDate(salaryRule, now);
   const isAdvance = advance <= salary;
   const date = isAdvance ? advance : salary;
   const daysLeft = Math.max(differenceInCalendarDays(date, now), 0);
@@ -144,6 +173,11 @@ export function payPeriod(profile: Profile | null, balance: number): PayPeriod |
     daysLeft,
     onHand: balance,
     perDay: balance > 0 ? balance / Math.max(daysLeft, 1) : 0,
+    paidToday: isPaymentToday(advanceRule, now)
+      ? 'Аванс'
+      : isPaymentToday(salaryRule, now)
+        ? 'Зарплата'
+        : null,
   };
 }
 

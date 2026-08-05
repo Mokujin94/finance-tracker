@@ -4,11 +4,11 @@ import type { Snapshot } from '../types';
 import {
   averageMonthlyExpense,
   categoryBreakdown,
-  currentBalance,
   debtTotals,
   debtViews,
   goalForecasts,
   monthlyStats,
+  totalBalance,
 } from './analytics';
 
 export interface RatingComponent {
@@ -60,7 +60,7 @@ export function computeRating(snapshot: Snapshot): Rating {
   const factIncome = recent.length ? recent.reduce((s, m) => s + m.income, 0) / recent.length : 0;
   const income = factIncome > 0 ? factIncome : plannedIncome;
   const expense = averageMonthlyExpense(snapshot);
-  const balance = currentBalance(profile, snapshot.transactions);
+  const balance = totalBalance(snapshot.accounts, snapshot.transactions);
   const views = debtViews(snapshot.debts, snapshot.debtPayments);
   const totals = debtTotals(views);
   const forecasts = goalForecasts(snapshot, views);

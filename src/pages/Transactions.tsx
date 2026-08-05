@@ -10,6 +10,7 @@ export default function Transactions() {
   const [type, setType] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
   const [categoryId, setCategoryId] = useState<string>('all');
   const [query, setQuery] = useState('');
+  const [accountId, setAccountId] = useState<string>('all');
 
   const months = useMemo(() => {
     const keys = new Set(snapshot.transactions.map((t) => monthKey(t.occurred_at)));
@@ -20,6 +21,7 @@ export default function Transactions() {
     const needle = query.trim().toLowerCase();
     return snapshot.transactions.filter((tx) => {
       if (month !== 'all' && monthKey(tx.occurred_at) !== month) return false;
+      if (accountId !== 'all' && (tx.account_id ?? 'none') !== accountId) return false;
       if (type === 'transfer' && !tx.is_transfer) return false;
       if (type !== 'all' && type !== 'transfer' && (tx.type !== type || tx.is_transfer)) return false;
       if (categoryId !== 'all' && (tx.category_id ?? 'none') !== categoryId) return false;
@@ -27,7 +29,7 @@ export default function Transactions() {
         return false;
       return true;
     });
-  }, [snapshot.transactions, month, type, categoryId, query]);
+  }, [snapshot.transactions, month, type, categoryId, query, accountId]);
 
   // Переводы между своими счетами в итогах не участвуют
   const income = filtered
@@ -48,7 +50,16 @@ export default function Transactions() {
       </div>
 
       <Card>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <option value="all">Все счета</option>
+            {snapshot.accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+            <option value="none">Без счёта</option>
+          </Select>
           <Select value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="all">Все месяцы</option>
             {months.map((key) => (
@@ -97,6 +108,10 @@ export default function Transactions() {
                   <p className="truncate text-sm font-medium">{tx.description}</p>
                   <p className="text-xs text-slate-400">
                     {fmtDay(tx.occurred_at)}
+                    {(() => {
+                      const account = snapshot.accounts.find((a) => a.id === tx.account_id);
+                      return account ? ` · ${account.name}` : '';
+                    })()}
                     {tx.raw_category ? ` · ${tx.raw_category}` : ''}
                     {tx.mcc ? ` · MCC ${tx.mcc}` : ''}
                   </p>

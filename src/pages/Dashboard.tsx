@@ -17,8 +17,8 @@ import { Badge, Card, Empty, ProgressBar, Stat } from '../components/ui';
 import { fmtDay, fmtDayTime, monthKey, monthLabel } from '../lib/dates';
 import { days, money, percent } from '../lib/format';
 import {
+  accountBalances,
   categoryBreakdown,
-  currentBalance,
   debtTotals,
   debtViews,
   goalForecasts,
@@ -33,10 +33,11 @@ export default function Dashboard() {
   const { snapshot } = useData();
   const profile = snapshot.profile;
 
-  const balance = useMemo(
-    () => currentBalance(profile, snapshot.transactions),
-    [profile, snapshot.transactions],
+  const balances = useMemo(
+    () => accountBalances(snapshot.accounts, snapshot.transactions),
+    [snapshot.accounts, snapshot.transactions],
   );
+  const balance = balances.reduce((sum, item) => sum + item.balance, 0);
   const period = useMemo(() => payPeriod(profile, balance), [profile, balance]);
   const thisMonth = monthKey(new Date());
   const breakdown = useMemo(
@@ -94,7 +95,9 @@ export default function Dashboard() {
             value={money(balance)}
             tone={balance < 0 ? 'negative' : 'default'}
             hint={
-              profile ? `остаток на ${fmtDayTime(profile.balance_as_of)} + операции после` : undefined
+              balances.length > 0
+                ? `по ${balances.length} ${balances.length === 1 ? 'счёту' : 'счетам'}`
+                : 'Добавьте счёт в настройках'
             }
           />
         </Card>
@@ -108,6 +111,11 @@ export default function Dashboard() {
                 : 'Заполните профиль'
             }
           />
+          {period?.paidToday && (
+            <p className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+              Сегодня день выплаты «{period.paidToday}» — деньги считаются пришедшими с 00:00
+            </p>
+          )}
         </Card>
         <Card>
           <Stat
@@ -129,6 +137,45 @@ export default function Dashboard() {
           />
         </Card>
       </div>
+
+      <Card
+        title="Счета"
+        action={
+          <Link to="/settings" className="text-xs text-indigo-600 hover:underline">
+            управлять →
+          </Link>
+        }
+      >
+        {balances.length === 0 ? (
+          <Empty
+            title="Счета не заведены"
+            hint="Добавьте счета в настройках — по одному на каждый банк"
+          />
+        ) : (
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {balances.map((item) => (
+              <li
+                key={item.account.id}
+                className="flex items-baseline justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800/70"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{item.account.name}</span>
+                  <span className="block text-xs text-slate-400">
+                    остаток на {fmtDayTime(item.account.balance_as_of)}
+                  </span>
+                </span>
+                <span
+                  className={`shrink-0 text-sm font-semibold ${
+                    item.balance < 0 ? 'text-rose-600' : ''
+                  }`}
+                >
+                  {money(item.balance)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Топ категорий трат за месяц">

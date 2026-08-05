@@ -4,9 +4,166 @@ import { Badge, Button, Card, Field, Input, Select } from '../components/ui';
 import { cloudMode } from '../data';
 import { fmtDay, fromLocalInput, nextPaymentDate, nowISO, toLocalInput, todayISO } from '../lib/dates';
 import { days, money } from '../lib/format';
+import { accountBalances } from '../logic/analytics';
 import { computeVacation } from '../logic/vacation';
-import type { TxType } from '../types';
+import type { AccountKind, TxType } from '../types';
 import { useData } from '../store/data';
+
+const BANK_OPTIONS = [
+  { value: 'tbank', label: 'Т-Банк' },
+  { value: 'sber', label: 'Сбер' },
+  { value: 'alfa', label: 'Альфа-Банк' },
+  { value: 'vtb', label: 'ВТБ' },
+  { value: 'other', label: 'Другой банк' },
+  { value: 'cash', label: 'Наличные' },
+];
+
+const KIND_OPTIONS: Array<{ value: AccountKind; label: string }> = [
+  { value: 'card', label: 'Карта / текущий счёт' },
+  { value: 'savings', label: 'Накопительный счёт' },
+  { value: 'deposit', label: 'Вклад' },
+  { value: 'cash', label: 'Наличные' },
+  { value: 'credit', label: 'Кредитная карта' },
+];
+
+/**
+ * Счета: у каждого свой остаток на свой момент, потому что выписки из разных банков
+ * приходят вразнобой. Общий баланс на дашборде — сумма по всем счетам.
+ */
+function AccountsCard() {
+  const { snapshot, addAccount, updateAccount, deleteAccount } = useData();
+  const [name, setName] = useState('');
+  const [bank, setBank] = useState('tbank');
+  const [kind, setKind] = useState<AccountKind>('card');
+  const [balance, setBalance] = useState('');
+
+  const balances = accountBalances(snapshot.accounts, snapshot.transactions);
+
+  async function submit() {
+    if (!name.trim()) return;
+    await addAccount({
+      name: name.trim(),
+      bank,
+      kind,
+      balance_start: Number(balance) || 0,
+      balance_as_of: nowISO(),
+    });
+    setName('');
+    setBalance('');
+  }
+
+  return (
+    <Card title="Счета">
+      <p className="mb-3 text-xs text-slate-500">
+        Заведите по счёту на каждый банк: зарплатный Сбер, основная карта Т-Банка, накопительный
+        счёт, наличные. Выписка при импорте привязывается к конкретному счёту, а переводы между
+        своими счетами не считаются доходом или расходом.
+      </p>
+
+      {balances.length > 0 && (
+        <ul className="mb-4 space-y-2">
+          {balances.map(({ account, balance: current, operations }) => (
+            <li
+              key={account.id}
+              className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {account.name}{' '}
+                    {account.is_primary && <Badge tone="indigo">основной</Badge>}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {BANK_OPTIONS.find((b) => b.value === account.bank)?.label ?? account.bank} ·{' '}
+                    {KIND_OPTIONS.find((k) => k.value === account.kind)?.label} · операций:{' '}
+                    {operations}
+                  </p>
+                </div>
+                <span className={`text-lg font-semibold ${current < 0 ? 'text-rose-600' : ''}`}>
+                  {money(current)}
+                </span>
+              </div>
+
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <Field label="Остаток по данным банка, ₽">
+                  <Input
+                    type="number"
+                    defaultValue={account.balance_start}
+                    onBlur={(e) =>
+                      void updateAccount(account.id, {
+                        balance_start: Number(e.target.value) || 0,
+                        // назвали свежую сумму — фиксируем на текущий момент
+                        balance_as_of: nowISO(),
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="На какой момент" hint="меняют баланс только операции после него">
+                  <Input
+                    type="datetime-local"
+                    value={toLocalInput(account.balance_as_of)}
+                    onChange={(e) =>
+                      void updateAccount(account.id, {
+                        balance_as_of: fromLocalInput(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                {!account.is_primary && (
+                  <Button variant="ghost" onClick={() => void updateAccount(account.id, { is_primary: true })}>
+                    Сделать основным
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  onClick={() => void updateAccount(account.id, { archived: !account.archived })}
+                >
+                  {account.archived ? 'Вернуть' : 'В архив'}
+                </Button>
+                <Button variant="danger" onClick={() => void deleteAccount(account.id)}>
+                  Удалить
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-4">
+        <Field label="Название">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Сбер, зарплатная" />
+        </Field>
+        <Field label="Банк">
+          <Select value={bank} onChange={(e) => setBank(e.target.value)}>
+            {BANK_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Тип">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as AccountKind)}>
+            {KIND_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Остаток сейчас, ₽">
+          <Input type="number" value={balance} onChange={(e) => setBalance(e.target.value)} />
+        </Field>
+      </div>
+      <Button className="mt-3" onClick={() => void submit()}>
+        Добавить счёт
+      </Button>
+    </Card>
+  );
+}
 
 export default function Settings() {
   const {
@@ -32,8 +189,6 @@ export default function Settings() {
     shift_weekend_payouts: profile?.shift_weekend_payouts ?? true,
     employment_date: profile?.employment_date ?? '',
     vacation_used_days: String(profile?.vacation_used_days ?? 0),
-    balance_start: String(profile?.balance_start ?? 0),
-    balance_as_of: toLocalInput(profile?.balance_as_of ?? nowISO()),
   });
   const [saved, setSaved] = useState(false);
 
@@ -68,8 +223,6 @@ export default function Settings() {
       shift_weekend_payouts: form.shift_weekend_payouts,
       employment_date: form.employment_date || null,
       vacation_used_days: Number(form.vacation_used_days) || 0,
-      balance_start: Number(form.balance_start) || 0,
-      balance_as_of: fromLocalInput(form.balance_as_of),
       onboarded: true,
     });
     setSaved(true);
@@ -162,31 +315,7 @@ export default function Settings() {
               onChange={(e) => setForm({ ...form, vacation_used_days: e.target.value })}
             />
           </Field>
-          <Field label="Остаток на счетах, ₽">
-            <Input
-              type="number"
-              value={form.balance_start}
-              onChange={(e) =>
-                // Назвали новую сумму — значит, она актуальна на сейчас
-                setForm({ ...form, balance_start: e.target.value, balance_as_of: toLocalInput(nowISO()) })
-              }
-            />
-          </Field>
-          <Field
-            label="На какой момент"
-            hint="Баланс меняют только операции после этого момента"
-          >
-            <Input
-              type="datetime-local"
-              value={form.balance_as_of}
-              onChange={(e) => setForm({ ...form, balance_as_of: e.target.value })}
-            />
-          </Field>
         </div>
-        <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
-          Сверились с банком — впишите свежую сумму: момент подставится текущий, и импорт старых
-          выписок баланс не тронет. Операции до этого момента считаются уже учтёнными в сумме.
-        </p>
         <label className="mt-3 flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
           <input
             type="checkbox"
@@ -211,6 +340,8 @@ export default function Settings() {
           </span>
         </div>
       </Card>
+
+      <AccountsCard />
 
       <Card title="Отпуск">
         {form.employment_date ? (

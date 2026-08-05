@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type {
+  Account,
   Category,
   Debt,
   DebtPayment,
@@ -34,8 +35,18 @@ export class SupabaseRepo implements Repo {
     const profileRes = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
     if (profileRes.error) throw profileRes.error;
 
-    const [categories, transactions, imports, goals, contributions, debts, debtPayments, vacations] =
-      await Promise.all([
+    const [
+      accounts,
+      categories,
+      transactions,
+      imports,
+      goals,
+      contributions,
+      debts,
+      debtPayments,
+      vacations,
+    ] = await Promise.all([
+        selectAll<Account>('accounts', userId),
         selectAll<Category>('categories', userId),
         selectAll<Transaction>('transactions', userId, 'occurred_at'),
         selectAll<ImportRun>('imports', userId, 'imported_at'),
@@ -49,6 +60,7 @@ export class SupabaseRepo implements Repo {
     return {
       ...emptySnapshot(),
       profile: (profileRes.data as Profile | null) ?? null,
+      accounts,
       categories,
       transactions: sortTransactions(transactions),
       imports,

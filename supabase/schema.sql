@@ -25,6 +25,24 @@ create table if not exists public.profiles (
   created_at         timestamptz    not null default now()
 );
 
+-- ----------------------------------------------------------------- счета ---
+-- По счёту на каждый банк: у каждого свой остаток и свой момент, на который он назван,
+-- потому что выписки из разных банков приходят вразнобой.
+create table if not exists public.accounts (
+  id            uuid primary key,
+  user_id       uuid not null references auth.users (id) on delete cascade,
+  name          text not null,
+  bank          text not null default 'other',
+  kind          text not null default 'card'
+                check (kind in ('card', 'savings', 'deposit', 'cash', 'credit')),
+  balance_start numeric(14, 2) not null default 0,
+  balance_as_of timestamptz not null default now(),
+  is_primary    boolean not null default false,
+  archived      boolean not null default false,
+  created_at    timestamptz not null default now()
+);
+create index if not exists accounts_user_idx on public.accounts (user_id);
+
 -- -------------------------------------------------------------- категории ---
 create table if not exists public.categories (
   id        uuid primary key,
@@ -41,6 +59,7 @@ create index if not exists categories_user_idx on public.categories (user_id);
 create table if not exists public.imports (
   id             uuid primary key,
   user_id        uuid not null references auth.users (id) on delete cascade,
+  account_id     uuid references public.accounts (id) on delete set null,
   filename       text not null,
   imported_at    timestamptz not null default now(),
   rows_total     integer not null default 0,
@@ -53,6 +72,7 @@ create index if not exists imports_user_idx on public.imports (user_id, imported
 create table if not exists public.transactions (
   id               uuid primary key,
   user_id          uuid not null references auth.users (id) on delete cascade,
+  account_id       uuid references public.accounts (id) on delete set null,
   occurred_at      timestamptz not null,
   amount           numeric(14, 2) not null check (amount >= 0),
   type             text not null check (type in ('income', 'expense')),
@@ -68,8 +88,10 @@ create table if not exists public.transactions (
   dedup_hash       text not null,
   created_at       timestamptz not null default now()
 );
--- Дедупликация повторных загрузок одной и той же выписки
-create unique index if not exists transactions_dedup_idx on public.transactions (user_id, dedup_hash);
+-- Дедупликация повторных загрузок одной выписки — в пределах счёта:
+-- одинаковая покупка могла пройти и по карте Т-Банка, и по карте Сбера.
+create unique index if not exists transactions_dedup_idx
+  on public.transactions (user_id, account_id, dedup_hash);
 create index if not exists transactions_user_date_idx on public.transactions (user_id, occurred_at desc);
 
 -- ------------------------------------------------------------------- цели ---
@@ -135,6 +157,7 @@ create index if not exists vacation_plans_user_idx on public.vacation_plans (use
 -- ============================================================================
 --  Row Level Security
 -- ============================================================================
+alter table public.accounts           enable row level security;
 alter table public.profiles           enable row level security;
 alter table public.categories         enable row level security;
 alter table public.imports            enable row level security;
@@ -156,7 +179,7 @@ declare
   t text;
 begin
   foreach t in array array[
-    'categories', 'imports', 'transactions', 'goals',
+    'accounts', 'categories', 'imports', 'transactions', 'goals',
     'goal_contributions', 'debts', 'debt_payments', 'vacation_plans'
   ]
   loop

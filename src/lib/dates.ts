@@ -112,10 +112,22 @@ export function paymentDateInMonth(base: Date, rule: PayDayRule): Date {
   return date;
 }
 
-/** Ближайшая предстоящая выплата (сегодняшняя считается предстоящей). */
+/**
+ * Ближайшая БУДУЩАЯ выплата. Деньги считаются пришедшими в 00:00 дня выплаты,
+ * поэтому сегодняшняя выплата уже не «предстоящая» — отсчёт идёт до следующей.
+ * Перенос с выходных может сдвинуть дату назад, поэтому проверяем несколько месяцев подряд.
+ */
 export function nextPaymentDate(rule: PayDayRule, from: Date = new Date()): Date {
   const today = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  const thisMonth = paymentDateInMonth(today, rule);
-  if (thisMonth >= today) return thisMonth;
+  for (let offset = 0; offset <= 3; offset++) {
+    const candidate = paymentDateInMonth(addMonths(today, offset), rule);
+    if (candidate > today) return candidate;
+  }
   return paymentDateInMonth(addMonths(today, 1), rule);
+}
+
+/** Была ли выплата сегодня (с 00:00 деньги считаются полученными). */
+export function isPaymentToday(rule: PayDayRule, from: Date = new Date()): boolean {
+  const today = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  return paymentDateInMonth(today, rule).getTime() === today.getTime();
 }

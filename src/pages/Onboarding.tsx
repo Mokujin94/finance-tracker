@@ -2,16 +2,16 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VacationCalendar from '../components/VacationCalendar';
 import ThemeToggle from '../components/ThemeToggle';
-import { Button, Card, Field, Input } from '../components/ui';
-import { fmtDay, fromLocalInput, nextPaymentDate, nowISO, toLocalInput } from '../lib/dates';
+import { Button, Card, Field, Input, Select } from '../components/ui';
+import { fmtDay, nextPaymentDate, nowISO } from '../lib/dates';
 import { days, money } from '../lib/format';
 import { computeVacation } from '../logic/vacation';
 import { useData } from '../store/data';
 
-const STEPS = ['Доходы', 'Работа и отпуск', 'Текущий остаток'];
+const STEPS = ['Доходы', 'Работа и отпуск', 'Первый счёт'];
 
 export default function Onboarding() {
-  const { snapshot, saveProfile, addVacation, deleteVacation } = useData();
+  const { snapshot, saveProfile, addVacation, deleteVacation, addAccount } = useData();
   const navigate = useNavigate();
   const profile = snapshot.profile;
 
@@ -25,8 +25,10 @@ export default function Onboarding() {
   const [shiftWeekend, setShiftWeekend] = useState(profile?.shift_weekend_payouts ?? true);
   const [employmentDate, setEmploymentDate] = useState(profile?.employment_date ?? '');
   const [vacationUsed, setVacationUsed] = useState(String(profile?.vacation_used_days ?? 0));
-  const [balanceStart, setBalanceStart] = useState(String(profile?.balance_start ?? ''));
-  const [balanceAsOf, setBalanceAsOf] = useState(toLocalInput(profile?.balance_as_of ?? nowISO()));
+  // Первый счёт заводим прямо в анкете; остальные добавляются в настройках
+  const [accountName, setAccountName] = useState('Т-Банк, основная');
+  const [accountBank, setAccountBank] = useState('tbank');
+  const [balanceStart, setBalanceStart] = useState('');
   const [saving, setSaving] = useState(false);
 
   const vacation = computeVacation(
@@ -59,10 +61,20 @@ export default function Onboarding() {
       shift_weekend_payouts: shiftWeekend,
       employment_date: employmentDate || null,
       vacation_used_days: Number(vacationUsed) || 0,
-      balance_start: Number(balanceStart) || 0,
-      balance_as_of: fromLocalInput(balanceAsOf),
       onboarded: true,
     });
+
+    if (snapshot.accounts.length === 0 && accountName.trim()) {
+      await addAccount({
+        name: accountName.trim(),
+        bank: accountBank,
+        kind: 'card',
+        balance_start: Number(balanceStart) || 0,
+        balance_as_of: nowISO(),
+        isPrimary: true,
+      });
+    }
+
     setSaving(false);
     navigate('/', { replace: true });
   }
@@ -239,8 +251,25 @@ export default function Onboarding() {
 
       {step === 2 && (
         <Card>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Сколько денег сейчас, ₽" hint="Остаток на всех счетах и картах">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Название счёта">
+              <Input
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                placeholder="Т-Банк, основная"
+              />
+            </Field>
+            <Field label="Банк">
+              <Select value={accountBank} onChange={(e) => setAccountBank(e.target.value)}>
+                <option value="tbank">Т-Банк</option>
+                <option value="sber">Сбер</option>
+                <option value="alfa">Альфа-Банк</option>
+                <option value="vtb">ВТБ</option>
+                <option value="other">Другой банк</option>
+                <option value="cash">Наличные</option>
+              </Select>
+            </Field>
+            <Field label="Сколько на нём сейчас, ₽">
               <Input
                 type="number"
                 inputMode="decimal"
@@ -249,23 +278,16 @@ export default function Onboarding() {
                 placeholder="50000"
               />
             </Field>
-            <Field label="На какой момент" hint="По умолчанию — прямо сейчас">
-              <Input
-                type="datetime-local"
-                value={balanceAsOf}
-                onChange={(e) => setBalanceAsOf(e.target.value)}
-              />
-            </Field>
           </div>
           <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
             Это та сумма, которую вы видите в банке сейчас — в ней уже учтены все прошлые операции.
             Поэтому импорт выписки за прошлые периоды баланс <b>не меняет</b>: старые операции идут
-            только в статистику и графики. Уменьшать или увеличивать баланс будут лишь операции,
-            которые произойдут после указанного момента.
+            только в статистику и графики. Двигать баланс будут лишь операции после этого момента.
           </p>
           <p className="mt-3 text-sm text-slate-500">
-            Дальше загрузите выписку Т-Банка на вкладке «Импорт» — категории и графики заполнятся
-            автоматически.
+            Остальные счета — зарплатный в другом банке, накопительный, наличные — добавите в
+            «Настройках». Выписка при импорте привязывается к своему счёту, а переводы между
+            своими счетами не считаются тратами.
           </p>
         </Card>
       )}

@@ -13,12 +13,49 @@ export interface ParsedRow {
   dedupHash: string;
 }
 
+/** Колонки, которые приложению нужны от выписки. */
+export type ColumnKey =
+  | 'date'
+  | 'amount'
+  | 'debit'
+  | 'credit'
+  | 'description'
+  | 'category'
+  | 'mcc'
+  | 'status'
+  | 'currency';
+
+/** Ручное сопоставление: ключ → индекс колонки в файле. */
+export type ColumnMapping = Partial<Record<ColumnKey, number>>;
+
+export type BankFormat = 'tbank' | 'sber' | 'alfa' | 'vtb' | 'generic';
+
+export const BANK_LABELS: Record<BankFormat, string> = {
+  tbank: 'Т-Банк',
+  sber: 'Сбер',
+  alfa: 'Альфа-Банк',
+  vtb: 'ВТБ',
+  generic: 'Неизвестный формат',
+};
+
 export interface ParseResult {
   rows: ParsedRow[];
   skipped: number;
   warnings: string[];
-  /** Заголовки, которые удалось распознать (для отладки формата) */
-  detected: Record<string, string>;
+  /** Распознанный формат выписки */
+  bank: BankFormat;
+  /** Заголовки таблицы — нужны для ручного сопоставления */
+  headers: string[];
+  /** Первые строки данных для предпросмотра при ручном сопоставлении */
+  sample: string[][];
+  /** Номер строки заголовков (0-based) */
+  headerRow: number;
+  /** Первые строки файла целиком — чтобы пользователь мог указать другую строку заголовков */
+  rawRows: string[][];
+  /** Какие колонки удалось определить автоматически */
+  mapping: ColumnMapping;
+  /** true — автоматически разобрать не вышло, нужно указать колонки руками */
+  needsMapping: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -26,18 +63,14 @@ export interface ParseResult {
 /* ------------------------------------------------------------------ */
 
 /**
- * Т-Банк отдаёт CSV в windows-1251 с разделителем «;». Но встречаются и UTF-8 выгрузки,
- * поэтому кодировку определяем по содержимому: берём вариант с меньшим числом «битых»
- * символов и большей долей кириллицы.
+ * Российские банки отдают CSV то в windows-1251, то в UTF-8.
+ * Строгий UTF-8 декодер бросает исключение на кириллице в 1251 — этим и пользуемся.
  */
 function decodeText(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     return new TextDecoder('utf-8').decode(bytes.subarray(3));
   }
-
-  // Строгий UTF-8: если байты — валидный UTF-8, это UTF-8. Кириллица в windows-1251
-  // почти всегда даёт невалидные UTF-8 последовательности, и декодер бросает исключение.
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
@@ -113,35 +146,36 @@ function normalizeHeader(value: string): string {
     .replace(/["']/g, '')
     .trim()
     .toLowerCase()
+    .replace(/ё/g, 'е')
     .replace(/\s+/g, ' ');
 }
 
-/** «-1 234,56» → -1234.56 */
+/** «-1 234,56 ₽» → -1234.56 */
 function parseAmount(value: string): number | null {
   if (typeof value === 'number') return value;
   if (!value) return null;
   const cleaned = String(value)
-    .replace(/ |\s/g, '')
+    .replace(/ |\s/g, '')
     .replace(/[^0-9,.\-+]/g, '')
     .replace(/,/g, '.');
   if (!cleaned || cleaned === '-' || cleaned === '+') return null;
-  // если осталось несколько точек — считаем, что первые были разделителями тысяч
   const parts = cleaned.split('.');
   const normalized = parts.length > 2 ? parts.slice(0, -1).join('') + '.' + parts.at(-1) : cleaned;
   const num = Number(normalized);
   return Number.isFinite(num) ? num : null;
 }
 
-/** Поддерживает «05.08.2026 13:45:12», «05.08.2026», ISO и Date из xlsx. */
+/** Поддерживает «05.08.2026 13:45:12», «05.08.2026», «2026-08-05», Date из xlsx. */
 function parseDate(value: unknown): Date | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   const str = String(value ?? '').trim();
   if (!str) return null;
 
-  const ru = str.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  const ru = str.match(/^(\d{2})\.(\d{2})\.(\d{2,4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (ru) {
     const [, d, m, y, hh = '0', mm = '0', ss = '0'] = ru;
-    return new Date(+y, +m - 1, +d, +hh, +mm, +ss);
+    const year = y.length === 2 ? 2000 + Number(y) : Number(y);
+    return new Date(year, +m - 1, +d, +hh, +mm, +ss);
   }
   const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (iso) {
@@ -171,42 +205,88 @@ export function hashString(input: string): string {
 /* Сопоставление колонок                                               */
 /* ------------------------------------------------------------------ */
 
-const COLUMN_SYNONYMS: Record<string, string[]> = {
-  dateOperation: ['дата операции', 'дата и время операции', 'дата', 'date', 'operation date'],
-  datePayment: ['дата платежа', 'дата обработки'],
+/**
+ * Синонимы заголовков разных банков. Заголовки нормализуются (нижний регистр, ё→е),
+ * поэтому здесь всё пишется без «ё».
+ *
+ * Т-Банк:  Дата операции | Сумма операции | Сумма платежа | Категория | MCC | Описание
+ * Сбер:    ДАТА ОПЕРАЦИИ | КАТЕГОРИЯ | СУММА В ВАЛЮТЕ СЧЕТА | ОПИСАНИЕ ОПЕРАЦИИ
+ * Альфа:   Дата операции | Описание операции | Приход | Расход | Валюта
+ * ВТБ:     Дата операции | Дата обработки | Описание | Сумма в валюте счета
+ */
+const COLUMN_SYNONYMS: Record<ColumnKey, string[]> = {
+  date: [
+    'дата операции',
+    'дата и время операции',
+    'дата проведения',
+    'дата проводки',
+    'дата обработки',
+    'дата платежа',
+    'дата',
+    'date',
+    'operation date',
+    'transaction date',
+  ],
+  amount: [
+    'сумма платежа',
+    'сумма операции',
+    'сумма в валюте счета',
+    'сумма в валюте операции',
+    'сумма в рублях',
+    'сумма',
+    'amount',
+  ],
+  debit: ['расход', 'списание', 'дебет', 'сумма списания', 'уменьшение', 'debit'],
+  credit: ['приход', 'зачисление', 'кредит', 'сумма зачисления', 'поступление', 'credit'],
+  description: [
+    'описание операции',
+    'описание',
+    'назначение платежа',
+    'наименование операции',
+    'контрагент',
+    'получатель',
+    'место совершения операции',
+    'комментарий',
+    'операция',
+    'description',
+  ],
+  category: ['категория', 'категория операции', 'category'],
+  mcc: ['mcc', 'мсс', 'mcc-код', 'код мсс', 'mcc код'],
   status: ['статус', 'status'],
-  amountOperation: ['сумма операции', 'сумма в валюте операции', 'сумма'],
-  currencyOperation: ['валюта операции', 'валюта'],
-  amountPayment: ['сумма платежа', 'сумма в валюте счета', 'сумма в валюте счёта'],
-  currencyPayment: ['валюта платежа', 'валюта счета', 'валюта счёта'],
-  category: ['категория', 'category'],
-  mcc: ['mcc', 'мсс', 'mcc-код', 'код мсс'],
-  description: ['описание', 'назначение платежа', 'контрагент', 'описание операции', 'description'],
-  cardNumber: ['номер карты'],
+  currency: ['валюта платежа', 'валюта операции', 'валюта счета', 'валюта', 'currency'],
 };
 
-type ColumnMap = Partial<Record<keyof typeof COLUMN_SYNONYMS, number>>;
-
-function mapColumns(header: string[]): { map: ColumnMap; detected: Record<string, string> } {
+/** Приоритет важен: «сумма платежа» у Т-Банка — рублёвая, её и берём первой. */
+function matchColumns(header: string[]): ColumnMapping {
   const normalized = header.map(normalizeHeader);
-  const map: ColumnMap = {};
-  const detected: Record<string, string> = {};
+  const mapping: ColumnMapping = {};
 
-  for (const [key, synonyms] of Object.entries(COLUMN_SYNONYMS)) {
-    let index = normalized.findIndex((h) => synonyms.includes(h));
-    if (index < 0) index = normalized.findIndex((h) => synonyms.some((s) => h.startsWith(s)));
-    if (index >= 0) {
-      map[key as keyof typeof COLUMN_SYNONYMS] = index;
-      detected[key] = header[index].trim();
+  for (const [key, synonyms] of Object.entries(COLUMN_SYNONYMS) as Array<[ColumnKey, string[]]>) {
+    for (const synonym of synonyms) {
+      const exact = normalized.findIndex((h) => h === synonym);
+      const index = exact >= 0 ? exact : normalized.findIndex((h) => h.startsWith(synonym));
+      if (index >= 0 && !Object.values(mapping).includes(index)) {
+        mapping[key] = index;
+        break;
+      }
     }
   }
-  return { map, detected };
+  return mapping;
+}
+
+function detectBank(header: string[]): BankFormat {
+  const joined = header.map(normalizeHeader).join('|');
+  if (joined.includes('округление на инвесткопилку') || joined.includes('кэшбэк')) return 'tbank';
+  if (joined.includes('сумма в валюте счета') && joined.includes('категория')) return 'sber';
+  if (joined.includes('приход') && joined.includes('расход')) return 'alfa';
+  if (joined.includes('дата обработки') || joined.includes('дата проводки')) return 'vtb';
+  return 'generic';
 }
 
 const FAILED_STATUSES = ['failed', 'отказ', 'отклонен', 'отклонён', 'отменен', 'отменён', 'cancel'];
 
 /* ------------------------------------------------------------------ */
-/* Публичный API                                                       */
+/* Чтение файла                                                        */
 /* ------------------------------------------------------------------ */
 
 async function fileToMatrix(file: File): Promise<string[][]> {
@@ -228,52 +308,111 @@ async function fileToMatrix(file: File): Promise<string[][]> {
   return parseCsv(text, detectDelimiter(text));
 }
 
-/** Ищет строку заголовков (у части выгрузок сверху идут служебные строки). */
+/**
+ * Ищет строку заголовков: у большинства выписок сверху идут служебные строки
+ * («Выписка по счёту», ФИО, период и т.п.).
+ */
 function findHeaderRow(matrix: string[][]): number {
-  for (let i = 0; i < Math.min(matrix.length, 15); i++) {
-    const normalized = matrix[i].map(normalizeHeader);
-    const hasDate = normalized.some((h) => COLUMN_SYNONYMS.dateOperation.some((s) => h.startsWith(s)));
-    const hasAmount = normalized.some((h) =>
-      [...COLUMN_SYNONYMS.amountOperation, ...COLUMN_SYNONYMS.amountPayment].some((s) =>
-        h.startsWith(s),
-      ),
-    );
-    if (hasDate && hasAmount) return i;
+  let best = -1;
+  let bestScore = 0;
+
+  for (let i = 0; i < Math.min(matrix.length, 25); i++) {
+    const mapping = matchColumns(matrix[i]);
+    const hasDate = mapping.date !== undefined;
+    const hasMoney =
+      mapping.amount !== undefined || mapping.debit !== undefined || mapping.credit !== undefined;
+    if (!hasDate || !hasMoney) continue;
+
+    const score = Object.keys(mapping).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
   }
-  return -1;
+  return best;
+}
+
+/** Строка с наибольшим числом колонок среди первых строк файла — вероятный заголовок таблицы. */
+function widestRow(matrix: string[][]): number {
+  let index = 0;
+  let width = 0;
+  for (let i = 0; i < Math.min(matrix.length, 25); i++) {
+    const filled = matrix[i].filter((cell) => cell.trim().length > 0).length;
+    if (filled > width) {
+      width = filled;
+      index = i;
+    }
+  }
+  return index;
+}
+
+/* ------------------------------------------------------------------ */
+/* Публичный API                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface ParseOptions {
+  /** Ручное сопоставление колонок — перекрывает автоматическое */
+  mapping?: ColumnMapping;
+  /** Номер строки заголовков (0-based), если автоопределение промахнулось */
+  headerRow?: number;
 }
 
 /**
- * Разбирает выписку Т-Банка (CSV в windows-1251/UTF-8 либо Excel).
- * PDF не поддерживается — в личном кабинете нужно выгружать CSV или Excel.
+ * Разбирает выписку (CSV в windows-1251/UTF-8 либо Excel).
+ * Если формат распознать не удалось, возвращает needsMapping: true вместе с заголовками
+ * и примером строк — интерфейс покажет ручное сопоставление колонок.
  */
-export async function parseStatement(file: File): Promise<ParseResult> {
+export async function parseStatement(file: File, options: ParseOptions = {}): Promise<ParseResult> {
   const warnings: string[] = [];
   if (/\.pdf$/i.test(file.name)) {
-    throw new Error(
-      'PDF-выписка не поддерживается: в приложении Т-Банка выберите формат CSV или Excel.',
-    );
+    throw new Error('PDF не поддерживается: выгрузите выписку в CSV или Excel.');
   }
 
   const matrix = await fileToMatrix(file);
   if (matrix.length === 0) throw new Error('Файл пустой или не читается.');
 
-  const headerIndex = findHeaderRow(matrix);
-  if (headerIndex < 0) {
-    throw new Error(
-      'Не найдены колонки «Дата операции» и «Сумма операции» — похоже, это не выписка Т-Банка.',
-    );
+  const detectedRow = options.headerRow ?? findHeaderRow(matrix);
+  // Если заголовки не опознаны, берём самую «широкую» строку из начала файла:
+  // над таблицей обычно стоят служебные строки в одну-две ячейки.
+  const fallbackRow = widestRow(matrix);
+  const headerRow = detectedRow >= 0 ? detectedRow : fallbackRow;
+
+  const headers = matrix[headerRow] ?? [];
+  const sample = matrix.slice(headerRow + 1, headerRow + 6);
+  const rawRows = matrix.slice(0, 12);
+  const bank = detectedRow >= 0 ? detectBank(headers) : 'generic';
+
+  const auto = matchColumns(headers);
+  const mapping: ColumnMapping = { ...auto, ...options.mapping };
+
+  const hasDate = mapping.date !== undefined;
+  const hasMoney =
+    mapping.amount !== undefined || mapping.debit !== undefined || mapping.credit !== undefined;
+
+  if (!hasDate || !hasMoney) {
+    return {
+      rows: [],
+      skipped: 0,
+      warnings: ['Не удалось определить колонки автоматически — укажите их вручную.'],
+      bank,
+      headers,
+      sample,
+      headerRow,
+      rawRows,
+      mapping,
+      needsMapping: true,
+    };
   }
 
-  const { map, detected } = mapColumns(matrix[headerIndex]);
   const rows: ParsedRow[] = [];
   const seen = new Set<string>();
   let skipped = 0;
+  let unsigned = 0;
 
-  for (let i = headerIndex + 1; i < matrix.length; i++) {
+  for (let i = headerRow + 1; i < matrix.length; i++) {
     const raw = matrix[i];
-    const cell = (key: keyof typeof COLUMN_SYNONYMS): string => {
-      const index = map[key];
+    const cell = (key: ColumnKey): string => {
+      const index = mapping[key];
       return index === undefined ? '' : (raw[index] ?? '').toString().trim();
     };
 
@@ -283,20 +422,24 @@ export async function parseStatement(file: File): Promise<ParseResult> {
       continue;
     }
 
-    const date = parseDate(cell('dateOperation') || cell('datePayment'));
+    const date = parseDate(cell('date'));
     if (!date) {
       skipped++;
       continue;
     }
 
-    // Приоритет — сумма в рублях (в выписке это «Сумма платежа»), иначе сумма операции.
-    const currencyPayment = cell('currencyPayment').toUpperCase();
-    const paymentAmount = parseAmount(cell('amountPayment'));
-    const operationAmount = parseAmount(cell('amountOperation'));
-    const amount =
-      paymentAmount !== null && (currencyPayment === '' || currencyPayment.startsWith('RUB'))
-        ? paymentAmount
-        : (operationAmount ?? paymentAmount);
+    // 1) отдельные колонки прихода и расхода (Альфа-Банк и подобные)
+    // 2) одна колонка суммы со знаком (Т-Банк, Сбер, ВТБ)
+    const debit = parseAmount(cell('debit'));
+    const credit = parseAmount(cell('credit'));
+    let amount: number | null = null;
+
+    if (debit || credit) {
+      amount = credit ? Math.abs(credit) : -Math.abs(debit!);
+    } else {
+      amount = parseAmount(cell('amount'));
+      if (amount !== null && amount > 0) unsigned++;
+    }
 
     if (amount === null || amount === 0) {
       skipped++;
@@ -318,8 +461,9 @@ export async function parseStatement(file: File): Promise<ParseResult> {
       ].join('|'),
     );
 
-    // Внутри одного файла одинаковые операции (одна дата, сумма, описание) — разные операции,
-    // поэтому к повторам добавляем счётчик, чтобы они не схлопнулись при импорте.
+    // Внутри одного файла одинаковые операции — разные операции, поэтому к повторам
+    // добавляем счётчик. При повторном импорте того же файла порядок тот же,
+    // и хэши совпадут — дедупликация продолжит работать.
     let uniqueHash = dedupHash;
     let counter = 1;
     while (seen.has(uniqueHash)) {
@@ -340,7 +484,23 @@ export async function parseStatement(file: File): Promise<ParseResult> {
   }
 
   if (rows.length === 0) warnings.push('В файле не нашлось ни одной операции.');
-  if (skipped > 0) warnings.push(`Пропущено строк без корректных данных или отклонённых: ${skipped}.`);
+  if (skipped > 0) warnings.push(`Пропущено строк без корректных данных: ${skipped}.`);
+  if (rows.length > 0 && unsigned === rows.length) {
+    warnings.push(
+      'Все суммы в файле положительные — расходы не отличить от доходов. Укажите колонки «Приход» и «Расход» вручную.',
+    );
+  }
 
-  return { rows, skipped, warnings, detected };
+  return {
+    rows,
+    skipped,
+    warnings,
+    bank,
+    headers,
+    sample,
+    headerRow,
+    rawRows,
+    mapping,
+    needsMapping: false,
+  };
 }

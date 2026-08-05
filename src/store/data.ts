@@ -4,6 +4,7 @@ import { todayISO } from '../lib/dates';
 import { buildDefaultCategories, guessCategoryId, isSelfTransfer } from '../logic/categorize';
 import type { ParsedRow } from '../logic/parseStatement';
 import type {
+  Account,
   Category,
   Debt,
   DebtPayment,
@@ -29,10 +30,24 @@ interface DataState {
 
   saveProfile: (patch: Partial<Profile>) => Promise<void>;
 
+  addAccount: (
+    input: Pick<Account, 'name' | 'bank' | 'kind' | 'balance_start' | 'balance_as_of'> & {
+      isPrimary?: boolean;
+    },
+  ) => Promise<UUID>;
+  updateAccount: (id: UUID, patch: Partial<Account>) => Promise<void>;
+  deleteAccount: (id: UUID) => Promise<void>;
+
   importStatement: (
     rows: ParsedRow[],
     filename: string,
+    accountId: UUID,
   ) => Promise<{ added: number; duplicates: number }>;
+  /**
+   * Ищет пары «списание с одного счёта — зачисление на другой» и помечает их переводами.
+   * Возвращает число найденных пар.
+   */
+  detectCrossAccountTransfers: () => Promise<number>;
   undoImport: (importId: UUID) => Promise<void>;
   setTransactionCategory: (txId: UUID, categoryId: UUID | null) => Promise<void>;
   /** Пометить операцию переводом между своими счетами (или снять пометку). */
@@ -115,17 +130,95 @@ export const useData = create<DataState>((set, get) => ({
     set({ snapshot: { ...snapshot, profile } });
   },
 
-  async importStatement(rows, filename) {
+  async addAccount(input) {
+    const { userId, snapshot } = get();
+    if (!userId) return '';
+    const account: Account = {
+      id: newId(),
+      user_id: userId,
+      name: input.name,
+      bank: input.bank,
+      kind: input.kind,
+      balance_start: input.balance_start,
+      balance_as_of: input.balance_as_of,
+      // первый счёт автоматически становится основным
+      is_primary: input.isPrimary ?? snapshot.accounts.length === 0,
+      archived: false,
+      created_at: new Date().toISOString(),
+    };
+
+    if (account.is_primary) {
+      for (const other of snapshot.accounts.filter((a) => a.is_primary)) {
+        await repo.updateRow('accounts', other.id, { is_primary: false });
+      }
+    }
+    await repo.insertRows('accounts', [account]);
+
+    set({
+      snapshot: {
+        ...snapshot,
+        accounts: [
+          ...snapshot.accounts.map((a) => (account.is_primary ? { ...a, is_primary: false } : a)),
+          account,
+        ],
+      },
+    });
+    return account.id;
+  },
+
+  async updateAccount(id, patch) {
+    const { snapshot } = get();
+    // Основной счёт может быть только один
+    if (patch.is_primary) {
+      for (const other of snapshot.accounts.filter((a) => a.is_primary && a.id !== id)) {
+        await repo.updateRow('accounts', other.id, { is_primary: false });
+      }
+    }
+    await repo.updateRow('accounts', id, patch);
+    set({
+      snapshot: {
+        ...snapshot,
+        accounts: snapshot.accounts.map((a) =>
+          a.id === id ? { ...a, ...patch } : patch.is_primary ? { ...a, is_primary: false } : a,
+        ),
+      },
+    });
+  },
+
+  async deleteAccount(id) {
+    const { snapshot } = get();
+    // Операции удалённого счёта остаются без привязки, чтобы не терять историю трат
+    for (const tx of snapshot.transactions.filter((t) => t.account_id === id)) {
+      await repo.updateRow('transactions', tx.id, { account_id: null });
+    }
+    await repo.deleteRow('accounts', id);
+    set({
+      snapshot: {
+        ...snapshot,
+        accounts: snapshot.accounts.filter((a) => a.id !== id),
+        transactions: snapshot.transactions.map((t) =>
+          t.account_id === id ? { ...t, account_id: null } : t,
+        ),
+      },
+    });
+  },
+
+  async importStatement(rows, filename, accountId) {
     const { userId, snapshot } = get();
     if (!userId) return { added: 0, duplicates: 0 };
 
-    const existing = new Set(snapshot.transactions.map((t) => t.dedup_hash));
+    // Дубликаты ищем в пределах счёта: одна и та же покупка могла пройти
+    // и по карте Т-Банка, и по карте Сбера — это разные операции.
+    const existing = new Set(
+      snapshot.transactions.filter((t) => t.account_id === accountId).map((t) => t.dedup_hash),
+    );
     const fresh = rows.filter((row) => !existing.has(row.dedupHash));
     const duplicates = rows.length - fresh.length;
 
     const run: ImportRun = {
       id: newId(),
       user_id: userId,
+      account_id: accountId,
       filename,
       imported_at: new Date().toISOString(),
       rows_total: rows.length,
@@ -138,6 +231,7 @@ export const useData = create<DataState>((set, get) => ({
       return {
         id: newId(),
         user_id: userId,
+        account_id: accountId,
         occurred_at: row.occurredAt,
         amount: row.amount,
         type: row.type,
@@ -173,6 +267,53 @@ export const useData = create<DataState>((set, get) => ({
       },
     });
     return { added: transactions.length, duplicates };
+  },
+
+  async detectCrossAccountTransfers() {
+    const { snapshot } = get();
+    // Перевод между своими счетами виден в двух выписках: списание в одной,
+    // зачисление в другой. Ищем пары: одинаковая сумма, разные счета,
+    // расхождение по времени не больше трёх суток.
+    const WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+    const candidates = snapshot.transactions.filter((t) => !t.is_transfer && !t.category_manual);
+    const expenses = candidates.filter((t) => t.type === 'expense');
+    const incomes = candidates.filter((t) => t.type === 'income');
+
+    const used = new Set<UUID>();
+    const pairs: Array<[UUID, UUID]> = [];
+
+    for (const expense of expenses) {
+      const match = incomes.find(
+        (income) =>
+          !used.has(income.id) &&
+          income.account_id !== expense.account_id &&
+          income.account_id !== null &&
+          expense.account_id !== null &&
+          Math.abs(income.amount - expense.amount) < 0.01 &&
+          Math.abs(
+            new Date(income.occurred_at).getTime() - new Date(expense.occurred_at).getTime(),
+          ) <= WINDOW_MS,
+      );
+      if (!match) continue;
+      used.add(match.id);
+      used.add(expense.id);
+      pairs.push([expense.id, match.id]);
+    }
+
+    const ids = pairs.flat();
+    for (const id of ids) {
+      await repo.updateRow('transactions', id, { is_transfer: true, category_id: null });
+    }
+
+    set({
+      snapshot: {
+        ...snapshot,
+        transactions: snapshot.transactions.map((t) =>
+          ids.includes(t.id) ? { ...t, is_transfer: true, category_id: null } : t,
+        ),
+      },
+    });
+    return pairs.length;
   },
 
   async undoImport(importId) {
