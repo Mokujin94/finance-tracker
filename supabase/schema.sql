@@ -11,6 +11,11 @@ create table if not exists public.profiles (
   salary_amount      numeric(14, 2) not null default 0,
   advance_day        smallint       not null default 25 check (advance_day between 1 and 31),
   salary_day         smallint       not null default 10 check (salary_day between 1 and 31),
+  -- выплата в последний день месяца: число из *_day тогда не используется
+  advance_is_last_day   boolean not null default false,
+  salary_is_last_day    boolean not null default false,
+  -- выплата попала на выходной → платят накануне (ТК РФ)
+  shift_weekend_payouts boolean not null default true,
   employment_date    date,
   vacation_used_days numeric(6, 2)  not null default 0,
   balance_start      numeric(14, 2) not null default 0,
@@ -57,6 +62,8 @@ create table if not exists public.transactions (
   raw_category     text,
   category_id      uuid references public.categories (id) on delete set null,
   category_manual  boolean not null default false,
+  -- перевод между своими счетами: вне баланса, статистики и рейтинга
+  is_transfer      boolean not null default false,
   import_id        uuid references public.imports (id) on delete set null,
   dedup_hash       text not null,
   created_at       timestamptz not null default now()

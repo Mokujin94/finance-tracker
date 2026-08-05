@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { emptySnapshot, newId, repo, sortTransactions } from '../data';
 import { todayISO } from '../lib/dates';
-import { buildDefaultCategories, guessCategoryId } from '../logic/categorize';
+import { buildDefaultCategories, guessCategoryId, isSelfTransfer } from '../logic/categorize';
 import type { ParsedRow } from '../logic/parseStatement';
 import type {
   Category,
@@ -35,6 +35,8 @@ interface DataState {
   ) => Promise<{ added: number; duplicates: number }>;
   undoImport: (importId: UUID) => Promise<void>;
   setTransactionCategory: (txId: UUID, categoryId: UUID | null) => Promise<void>;
+  /** Пометить операцию переводом между своими счетами (или снять пометку). */
+  setTransactionTransfer: (txId: UUID, isTransfer: boolean) => Promise<void>;
   deleteTransaction: (txId: UUID) => Promise<void>;
   /** Пересчитать категории у операций, которым их не выставляли вручную. Возвращает число изменённых. */
   recategorize: () => Promise<number>;
@@ -68,6 +70,9 @@ function defaultProfile(userId: UUID): Profile {
     salary_amount: 0,
     advance_day: 25,
     salary_day: 10,
+    advance_is_last_day: false,
+    salary_is_last_day: false,
+    shift_weekend_payouts: true,
     employment_date: null,
     vacation_used_days: 0,
     balance_start: 0,
@@ -128,27 +133,34 @@ export const useData = create<DataState>((set, get) => ({
       rows_duplicate: duplicates,
     };
 
-    const transactions: Transaction[] = fresh.map((row) => ({
-      id: newId(),
-      user_id: userId,
-      occurred_at: row.occurredAt,
-      amount: row.amount,
-      type: row.type,
-      description: row.description,
-      counterparty: row.counterparty,
-      mcc: row.mcc,
-      raw_category: row.rawCategory,
-      category_id: guessCategoryId(snapshot.categories, {
+    const transactions: Transaction[] = fresh.map((row) => {
+      const transfer = isSelfTransfer(row.description, row.rawCategory);
+      return {
+        id: newId(),
+        user_id: userId,
+        occurred_at: row.occurredAt,
+        amount: row.amount,
         type: row.type,
         description: row.description,
-        rawCategory: row.rawCategory,
+        counterparty: row.counterparty,
         mcc: row.mcc,
-      }),
-      category_manual: false,
-      import_id: run.id,
-      dedup_hash: row.dedupHash,
-      created_at: new Date().toISOString(),
-    }));
+        raw_category: row.rawCategory,
+        // переводу между своими счетами категория не нужна — он вне доходов и расходов
+        category_id: transfer
+          ? null
+          : guessCategoryId(snapshot.categories, {
+              type: row.type,
+              description: row.description,
+              rawCategory: row.rawCategory,
+              mcc: row.mcc,
+            }),
+        category_manual: false,
+        is_transfer: transfer,
+        import_id: run.id,
+        dedup_hash: row.dedupHash,
+        created_at: new Date().toISOString(),
+      };
+    });
 
     await repo.insertRows('imports', [run]);
     if (transactions.length > 0) await repo.insertRows('transactions', transactions);
@@ -179,16 +191,29 @@ export const useData = create<DataState>((set, get) => ({
 
   async setTransactionCategory(txId, categoryId) {
     const { snapshot } = get();
-    await repo.updateRow('transactions', txId, {
-      category_id: categoryId,
-      category_manual: true,
-    });
+    // Выбрали обычную категорию — значит, это не перевод между счетами
+    const patch = { category_id: categoryId, category_manual: true, is_transfer: false };
+    await repo.updateRow('transactions', txId, patch);
     set({
       snapshot: {
         ...snapshot,
-        transactions: snapshot.transactions.map((t) =>
-          t.id === txId ? { ...t, category_id: categoryId, category_manual: true } : t,
-        ),
+        transactions: snapshot.transactions.map((t) => (t.id === txId ? { ...t, ...patch } : t)),
+      },
+    });
+  },
+
+  async setTransactionTransfer(txId, isTransfer) {
+    const { snapshot } = get();
+    const patch = {
+      is_transfer: isTransfer,
+      category_manual: true,
+      ...(isTransfer ? { category_id: null } : {}),
+    };
+    await repo.updateRow('transactions', txId, patch);
+    set({
+      snapshot: {
+        ...snapshot,
+        transactions: snapshot.transactions.map((t) => (t.id === txId ? { ...t, ...patch } : t)),
       },
     });
   },
@@ -203,28 +228,33 @@ export const useData = create<DataState>((set, get) => ({
 
   async recategorize() {
     const { snapshot } = get();
-    const updates = new Map<UUID, UUID | null>();
+    const updates = new Map<UUID, { category_id: UUID | null; is_transfer: boolean }>();
 
     for (const tx of snapshot.transactions) {
       if (tx.category_manual) continue;
-      const next = guessCategoryId(snapshot.categories, {
-        type: tx.type,
-        description: tx.description,
-        rawCategory: tx.raw_category,
-        mcc: tx.mcc,
-      });
-      if (next !== tx.category_id) updates.set(tx.id, next);
+      const transfer = isSelfTransfer(tx.description, tx.raw_category);
+      const categoryId = transfer
+        ? null
+        : guessCategoryId(snapshot.categories, {
+            type: tx.type,
+            description: tx.description,
+            rawCategory: tx.raw_category,
+            mcc: tx.mcc,
+          });
+      if (categoryId !== tx.category_id || transfer !== tx.is_transfer) {
+        updates.set(tx.id, { category_id: categoryId, is_transfer: transfer });
+      }
     }
 
-    for (const [id, categoryId] of updates) {
-      await repo.updateRow('transactions', id, { category_id: categoryId });
+    for (const [id, patch] of updates) {
+      await repo.updateRow('transactions', id, patch);
     }
 
     set({
       snapshot: {
         ...snapshot,
         transactions: snapshot.transactions.map((tx) =>
-          updates.has(tx.id) ? { ...tx, category_id: updates.get(tx.id)! } : tx,
+          updates.has(tx.id) ? { ...tx, ...updates.get(tx.id)! } : tx,
         ),
       },
     });

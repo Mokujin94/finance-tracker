@@ -7,10 +7,16 @@ export interface Profile {
   advance_amount: number;
   /** Сумма зарплаты, ₽ */
   salary_amount: number;
-  /** День месяца, когда приходит аванс (1–31) */
+  /** День месяца, когда приходит аванс (1–31); игнорируется, если advance_is_last_day */
   advance_day: number;
-  /** День месяца, когда приходит зарплата (1–31) */
+  /** День месяца, когда приходит зарплата (1–31); игнорируется, если salary_is_last_day */
   salary_day: number;
+  /** Аванс приходит в последний день месяца */
+  advance_is_last_day: boolean;
+  /** Зарплата приходит в последний день месяца */
+  salary_is_last_day: boolean;
+  /** Если выплата попадает на выходной — переносить на предшествующий рабочий день */
+  shift_weekend_payouts: boolean;
   /** Дата трудоустройства (ISO, YYYY-MM-DD) */
   employment_date: string | null;
   /** Уже использовано дней отпуска */
@@ -58,6 +64,11 @@ export interface Transaction {
   category_id: UUID | null;
   /** true, если категорию поставил пользователь вручную (автокатегоризация её не трогает) */
   category_manual: boolean;
+  /**
+   * Перевод между своими счетами. Деньги не приходят и не уходят, поэтому такие операции
+   * не влияют ни на баланс, ни на статистику доходов/расходов, ни на рейтинг.
+   */
+  is_transfer: boolean;
   import_id: UUID | null;
   /** Хэш для дедупликации повторных импортов */
   dedup_hash: string;

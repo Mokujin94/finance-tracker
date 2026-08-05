@@ -403,6 +403,32 @@ export function buildDefaultCategories(userId: UUID): Category[] {
 
 const FALLBACK: Record<TxType, string> = { expense: 'Другое', income: 'Прочие доходы' };
 
+/**
+ * Маркеры перевода между своими счетами. Т-Банк пишет такие операции как
+ * «Между своими счетами» (и в «Категории», и в «Описании»).
+ */
+const TRANSFER_MARKERS = [
+  'между своими счетами',
+  'между своими счётами',
+  'между счетами',
+  'между счётами',
+  'перевод между',
+  'перевод себе',
+  'на свой счет',
+  'на свой счёт',
+  'со своего счета',
+  'со своего счёта',
+  'внутренний перевод',
+  'пополнение накопительного счета',
+  'пополнение накопительного счёта',
+];
+
+/** Перевод между своими счетами: деньги не заработаны и не потрачены. */
+export function isSelfTransfer(description: string, rawCategory: string | null): boolean {
+  const haystack = `${rawCategory ?? ''} ${description}`.toLowerCase();
+  return TRANSFER_MARKERS.some((marker) => haystack.includes(marker));
+}
+
 function mccMatches(mcc: string | null, name: string): boolean {
   if (!mcc) return false;
   const code = Number(mcc);

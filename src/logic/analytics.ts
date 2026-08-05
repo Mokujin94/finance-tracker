@@ -14,6 +14,14 @@ import type {
 /* ------------------------------- Баланс -------------------------------- */
 
 /**
+ * Переводы между своими счетами исключаются из всех расчётов: деньги остаются у пользователя,
+ * а в выписке такая операция видна дважды (списание с одного счёта и зачисление на другой).
+ */
+export function realTransactions(transactions: Transaction[]): Transaction[] {
+  return transactions.filter((tx) => !tx.is_transfer);
+}
+
+/**
  * Текущий баланс = остаток, названный пользователем, плюс операции строго ПОСЛЕ момента,
  * на который он назван. Операции до этого момента банк уже учёл в названной сумме —
  * если считать их снова, импорт старой выписки «съест» баланс.
@@ -21,7 +29,7 @@ import type {
 export function currentBalance(profile: Profile | null, transactions: Transaction[]): number {
   if (!profile) return 0;
   const since = toDate(profile.balance_as_of).getTime();
-  return transactions.reduce((sum, tx) => {
+  return realTransactions(transactions).reduce((sum, tx) => {
     if (toDate(tx.occurred_at).getTime() <= since) return sum;
     return sum + (tx.type === 'income' ? tx.amount : -tx.amount);
   }, profile.balance_start);
@@ -36,7 +44,8 @@ export interface MonthStat {
   net: number;
 }
 
-export function monthlyStats(transactions: Transaction[], limit = 12): MonthStat[] {
+export function monthlyStats(all: Transaction[], limit = 12): MonthStat[] {
+  const transactions = realTransactions(all);
   if (transactions.length === 0) return [];
   const dates = transactions.map((t) => toDate(t.occurred_at));
   const from = new Date(Math.min(...dates.map((d) => d.getTime())));
@@ -72,7 +81,7 @@ export function categoryBreakdown(
   const byId = new Map(categories.map((c) => [c.id, c]));
   const totals = new Map<string, number>();
 
-  for (const tx of transactions) {
+  for (const tx of realTransactions(transactions)) {
     if (tx.type !== type) continue;
     if (month && monthKey(tx.occurred_at) !== month) continue;
     const key = tx.category_id ?? 'none';
@@ -108,8 +117,22 @@ export interface PayPeriod {
 export function payPeriod(profile: Profile | null, balance: number): PayPeriod | null {
   if (!profile) return null;
   const now = new Date();
-  const advance = nextPaymentDate(profile.advance_day, now);
-  const salary = nextPaymentDate(profile.salary_day, now);
+  const advance = nextPaymentDate(
+    {
+      day: profile.advance_day,
+      isLastDay: profile.advance_is_last_day,
+      shiftFromWeekend: profile.shift_weekend_payouts,
+    },
+    now,
+  );
+  const salary = nextPaymentDate(
+    {
+      day: profile.salary_day,
+      isLastDay: profile.salary_is_last_day,
+      shiftFromWeekend: profile.shift_weekend_payouts,
+    },
+    now,
+  );
   const isAdvance = advance <= salary;
   const date = isAdvance ? advance : salary;
   const daysLeft = Math.max(differenceInCalendarDays(date, now), 0);

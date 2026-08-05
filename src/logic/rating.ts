@@ -128,7 +128,8 @@ export function computeRating(snapshot: Snapshot): Rating {
   // Импульсивные покупки: разовые траты дороже 20% месячного дохода
   const impulseThreshold = income * 0.2;
   const impulse = snapshot.transactions.filter(
-    (t) => t.type === 'expense' && impulseThreshold > 0 && t.amount > impulseThreshold,
+    (t) =>
+      t.type === 'expense' && !t.is_transfer && impulseThreshold > 0 && t.amount > impulseThreshold,
   );
   const impulsePenalty = clamp(impulse.length * 0.1, 0, 0.4);
 

@@ -5,9 +5,9 @@ import { money } from '../lib/format';
 import { useData } from '../store/data';
 
 export default function Transactions() {
-  const { snapshot, setTransactionCategory, deleteTransaction } = useData();
+  const { snapshot, setTransactionCategory, setTransactionTransfer, deleteTransaction } = useData();
   const [month, setMonth] = useState<string>(monthKey(new Date()));
-  const [type, setType] = useState<'all' | 'income' | 'expense'>('all');
+  const [type, setType] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
   const [categoryId, setCategoryId] = useState<string>('all');
   const [query, setQuery] = useState('');
 
@@ -20,7 +20,8 @@ export default function Transactions() {
     const needle = query.trim().toLowerCase();
     return snapshot.transactions.filter((tx) => {
       if (month !== 'all' && monthKey(tx.occurred_at) !== month) return false;
-      if (type !== 'all' && tx.type !== type) return false;
+      if (type === 'transfer' && !tx.is_transfer) return false;
+      if (type !== 'all' && type !== 'transfer' && (tx.type !== type || tx.is_transfer)) return false;
       if (categoryId !== 'all' && (tx.category_id ?? 'none') !== categoryId) return false;
       if (needle && !`${tx.description} ${tx.raw_category ?? ''}`.toLowerCase().includes(needle))
         return false;
@@ -28,8 +29,14 @@ export default function Transactions() {
     });
   }, [snapshot.transactions, month, type, categoryId, query]);
 
-  const income = filtered.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense = filtered.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  // Переводы между своими счетами в итогах не участвуют
+  const income = filtered
+    .filter((t) => t.type === 'income' && !t.is_transfer)
+    .reduce((s, t) => s + t.amount, 0);
+  const expense = filtered
+    .filter((t) => t.type === 'expense' && !t.is_transfer)
+    .reduce((s, t) => s + t.amount, 0);
+  const transferCount = filtered.filter((t) => t.is_transfer).length;
 
   return (
     <div className="space-y-4">
@@ -51,9 +58,10 @@ export default function Transactions() {
             ))}
           </Select>
           <Select value={type} onChange={(e) => setType(e.target.value as typeof type)}>
-            <option value="all">Доходы и расходы</option>
+            <option value="all">Все операции</option>
             <option value="expense">Только расходы</option>
             <option value="income">Только доходы</option>
+            <option value="transfer">Переводы между счетами</option>
           </Select>
           <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="all">Все категории</option>
@@ -74,6 +82,7 @@ export default function Transactions() {
         <p className="mt-3 text-sm text-slate-500">
           Найдено {filtered.length}: доходы <b className="text-emerald-600">{money(income)}</b>,
           расходы <b className="text-rose-600">{money(expense)}</b>
+          {transferCount > 0 && <> · переводов между счетами {transferCount} (в итоги не входят)</>}
         </p>
       </Card>
 
@@ -94,11 +103,15 @@ export default function Transactions() {
                 </div>
 
                 <Select
-                  className="w-40 shrink-0 py-1 text-xs"
-                  value={tx.category_id ?? ''}
-                  onChange={(e) => void setTransactionCategory(tx.id, e.target.value || null)}
+                  className="w-44 shrink-0 py-1 text-xs"
+                  value={tx.is_transfer ? 'transfer' : (tx.category_id ?? '')}
+                  onChange={(e) => {
+                    if (e.target.value === 'transfer') void setTransactionTransfer(tx.id, true);
+                    else void setTransactionCategory(tx.id, e.target.value || null);
+                  }}
                 >
                   <option value="">Без категории</option>
+                  <option value="transfer">↔ Между своими счетами</option>
                   {snapshot.categories
                     .filter((c) => c.kind === tx.type)
                     .map((category) => (
@@ -110,7 +123,11 @@ export default function Transactions() {
 
                 <span
                   className={`w-28 shrink-0 text-right text-sm font-semibold ${
-                    tx.type === 'income' ? 'text-emerald-600' : 'text-slate-900'
+                    tx.is_transfer
+                      ? 'text-slate-400 line-through'
+                      : tx.type === 'income'
+                        ? 'text-emerald-600'
+                        : 'text-slate-900'
                   }`}
                 >
                   {tx.type === 'income' ? '+' : '−'}

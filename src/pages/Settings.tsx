@@ -2,7 +2,7 @@ import { useState } from 'react';
 import VacationCalendar from '../components/VacationCalendar';
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui';
 import { cloudMode } from '../data';
-import { fmtDay, fromLocalInput, nowISO, toLocalInput, todayISO } from '../lib/dates';
+import { fmtDay, fromLocalInput, nextPaymentDate, nowISO, toLocalInput, todayISO } from '../lib/dates';
 import { days, money } from '../lib/format';
 import { computeVacation } from '../logic/vacation';
 import type { TxType } from '../types';
@@ -27,6 +27,9 @@ export default function Settings() {
     salary_amount: String(profile?.salary_amount ?? 0),
     advance_day: String(profile?.advance_day ?? 25),
     salary_day: String(profile?.salary_day ?? 10),
+    advance_is_last_day: profile?.advance_is_last_day ?? false,
+    salary_is_last_day: profile?.salary_is_last_day ?? false,
+    shift_weekend_payouts: profile?.shift_weekend_payouts ?? true,
     employment_date: profile?.employment_date ?? '',
     vacation_used_days: String(profile?.vacation_used_days ?? 0),
     balance_start: String(profile?.balance_start ?? 0),
@@ -43,12 +46,26 @@ export default function Settings() {
     snapshot.vacations,
   );
 
+  const nextAdvance = nextPaymentDate({
+    day: Number(form.advance_day) || 25,
+    isLastDay: form.advance_is_last_day,
+    shiftFromWeekend: form.shift_weekend_payouts,
+  });
+  const nextSalary = nextPaymentDate({
+    day: Number(form.salary_day) || 10,
+    isLastDay: form.salary_is_last_day,
+    shiftFromWeekend: form.shift_weekend_payouts,
+  });
+
   async function save() {
     await saveProfile({
       advance_amount: Number(form.advance_amount) || 0,
       salary_amount: Number(form.salary_amount) || 0,
       advance_day: Math.min(Math.max(Number(form.advance_day) || 25, 1), 31),
       salary_day: Math.min(Math.max(Number(form.salary_day) || 10, 1), 31),
+      advance_is_last_day: form.advance_is_last_day,
+      salary_is_last_day: form.salary_is_last_day,
+      shift_weekend_payouts: form.shift_weekend_payouts,
       employment_date: form.employment_date || null,
       vacation_used_days: Number(form.vacation_used_days) || 0,
       balance_start: Number(form.balance_start) || 0,
@@ -94,7 +111,16 @@ export default function Settings() {
               max={31}
               value={form.advance_day}
               onChange={(e) => setForm({ ...form, advance_day: e.target.value })}
+              disabled={form.advance_is_last_day}
             />
+            <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={form.advance_is_last_day}
+                onChange={(e) => setForm({ ...form, advance_is_last_day: e.target.checked })}
+              />
+              в последний день месяца
+            </label>
           </Field>
           <Field label="Зарплата, ₽">
             <Input
@@ -110,7 +136,16 @@ export default function Settings() {
               max={31}
               value={form.salary_day}
               onChange={(e) => setForm({ ...form, salary_day: e.target.value })}
+              disabled={form.salary_is_last_day}
             />
+            <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={form.salary_is_last_day}
+                onChange={(e) => setForm({ ...form, salary_is_last_day: e.target.checked })}
+              />
+              в последний день месяца
+            </label>
           </Field>
           <Field label="Дата трудоустройства">
             <Input
@@ -152,11 +187,27 @@ export default function Settings() {
           Сверились с банком — впишите свежую сумму: момент подставится текущий, и импорт старых
           выписок баланс не тронет. Операции до этого момента считаются уже учтёнными в сумме.
         </p>
-        <div className="mt-4 flex items-center gap-3">
+        <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={form.shift_weekend_payouts}
+            onChange={(e) => setForm({ ...form, shift_weekend_payouts: e.target.checked })}
+          />
+          <span>
+            Если день выплаты попадает на выходной — платят накануне
+            <span className="block text-xs text-slate-400">
+              По ТК РФ. Праздничные дни не учитываются.
+            </span>
+          </span>
+        </label>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button onClick={() => void save()}>Сохранить</Button>
           <span className="text-sm text-slate-500">
             Доход в месяц:{' '}
-            <b>{money((Number(form.advance_amount) || 0) + (Number(form.salary_amount) || 0))}</b>
+            <b>{money((Number(form.advance_amount) || 0) + (Number(form.salary_amount) || 0))}</b> ·
+            ближайшие выплаты: аванс {fmtDay(nextAdvance)}, зарплата {fmtDay(nextSalary)}
           </span>
         </div>
       </Card>

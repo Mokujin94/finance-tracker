@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VacationCalendar from '../components/VacationCalendar';
 import { Button, Card, Field, Input } from '../components/ui';
-import { fmtDay, fromLocalInput, nowISO, toLocalInput } from '../lib/dates';
+import { fmtDay, fromLocalInput, nextPaymentDate, nowISO, toLocalInput } from '../lib/dates';
 import { days, money } from '../lib/format';
 import { computeVacation } from '../logic/vacation';
 import { useData } from '../store/data';
@@ -19,6 +19,9 @@ export default function Onboarding() {
   const [salaryAmount, setSalaryAmount] = useState(String(profile?.salary_amount ?? ''));
   const [advanceDay, setAdvanceDay] = useState(String(profile?.advance_day ?? 25));
   const [salaryDay, setSalaryDay] = useState(String(profile?.salary_day ?? 10));
+  const [advanceLastDay, setAdvanceLastDay] = useState(profile?.advance_is_last_day ?? false);
+  const [salaryLastDay, setSalaryLastDay] = useState(profile?.salary_is_last_day ?? false);
+  const [shiftWeekend, setShiftWeekend] = useState(profile?.shift_weekend_payouts ?? true);
   const [employmentDate, setEmploymentDate] = useState(profile?.employment_date ?? '');
   const [vacationUsed, setVacationUsed] = useState(String(profile?.vacation_used_days ?? 0));
   const [balanceStart, setBalanceStart] = useState(String(profile?.balance_start ?? ''));
@@ -32,6 +35,16 @@ export default function Onboarding() {
   );
 
   const monthlyIncome = (Number(advanceAmount) || 0) + (Number(salaryAmount) || 0);
+  const nextAdvance = nextPaymentDate({
+    day: Number(advanceDay) || 25,
+    isLastDay: advanceLastDay,
+    shiftFromWeekend: shiftWeekend,
+  });
+  const nextSalary = nextPaymentDate({
+    day: Number(salaryDay) || 10,
+    isLastDay: salaryLastDay,
+    shiftFromWeekend: shiftWeekend,
+  });
 
   async function finish() {
     setSaving(true);
@@ -40,6 +53,9 @@ export default function Onboarding() {
       salary_amount: Number(salaryAmount) || 0,
       advance_day: Math.min(Math.max(Number(advanceDay) || 25, 1), 31),
       salary_day: Math.min(Math.max(Number(salaryDay) || 10, 1), 31),
+      advance_is_last_day: advanceLastDay,
+      salary_is_last_day: salaryLastDay,
+      shift_weekend_payouts: shiftWeekend,
       employment_date: employmentDate || null,
       vacation_used_days: Number(vacationUsed) || 0,
       balance_start: Number(balanceStart) || 0,
@@ -91,7 +107,16 @@ export default function Onboarding() {
                 max={31}
                 value={advanceDay}
                 onChange={(e) => setAdvanceDay(e.target.value)}
+                disabled={advanceLastDay}
               />
+              <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={advanceLastDay}
+                  onChange={(e) => setAdvanceLastDay(e.target.checked)}
+                />
+                в последний день месяца
+              </label>
             </Field>
             <Field label="Зарплата, ₽">
               <Input
@@ -109,13 +134,43 @@ export default function Onboarding() {
                 max={31}
                 value={salaryDay}
                 onChange={(e) => setSalaryDay(e.target.value)}
+                disabled={salaryLastDay}
               />
+              <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={salaryLastDay}
+                  onChange={(e) => setSalaryLastDay(e.target.checked)}
+                />
+                в последний день месяца
+              </label>
             </Field>
           </div>
+
+          <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={shiftWeekend}
+              onChange={(e) => setShiftWeekend(e.target.checked)}
+            />
+            <span>
+              Если день выплаты попадает на выходной — платят накануне
+              <span className="block text-xs text-slate-400">
+                Так требует ТК РФ. Праздники не учитываются — их придётся держать в голове.
+              </span>
+            </span>
+          </label>
+
           {monthlyIncome > 0 && (
-            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-              Доход в месяц: <b>{money(monthlyIncome)}</b>
-            </p>
+            <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+              <p>
+                Доход в месяц: <b>{money(monthlyIncome)}</b>
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Ближайшие выплаты: аванс {fmtDay(nextAdvance)}, зарплата {fmtDay(nextSalary)}
+              </p>
+            </div>
           )}
         </Card>
       )}

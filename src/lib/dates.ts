@@ -80,19 +80,42 @@ export function monthRange(from: Date, to: Date, limit = 12): string[] {
   return keys.slice(-limit);
 }
 
+export interface PayDayRule {
+  /** День месяца 1–31; игнорируется, если isLastDay */
+  day: number;
+  /** Выплата в последний день месяца */
+  isLastDay: boolean;
+  /** Переносить выплату с выходного на предшествующий рабочий день */
+  shiftFromWeekend: boolean;
+}
+
+function isWeekend(date: Date): boolean {
+  const weekday = date.getDay();
+  return weekday === 0 || weekday === 6;
+}
+
 /**
- * Ближайшая дата выплаты для указанного дня месяца.
- * Если в месяце нет такого дня (например, 31 в феврале) — берётся последний день месяца.
+ * Дата выплаты в конкретном месяце.
+ * Если в месяце нет такого дня (31 в феврале) — берётся последний день месяца.
+ * По ТК РФ при совпадении дня выплаты с выходным зарплату выдают накануне,
+ * поэтому дата сдвигается назад до ближайшего буднего дня.
  */
-export function nextPaymentDate(dayOfMonth: number, from: Date = new Date()): Date {
-  const clampToMonth = (base: Date): Date => {
-    const last = endOfMonth(base).getDate();
-    const d = new Date(base.getFullYear(), base.getMonth(), Math.min(dayOfMonth, last));
-    d.setHours(0, 0, 0, 0);
-    return d;
-  };
-  const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  const thisMonth = clampToMonth(start);
-  if (thisMonth >= start) return thisMonth;
-  return clampToMonth(addMonths(start, 1));
+export function paymentDateInMonth(base: Date, rule: PayDayRule): Date {
+  const lastDay = endOfMonth(base).getDate();
+  const day = rule.isLastDay ? lastDay : Math.min(rule.day, lastDay);
+  const date = new Date(base.getFullYear(), base.getMonth(), day);
+  date.setHours(0, 0, 0, 0);
+
+  if (rule.shiftFromWeekend) {
+    while (isWeekend(date)) date.setDate(date.getDate() - 1);
+  }
+  return date;
+}
+
+/** Ближайшая предстоящая выплата (сегодняшняя считается предстоящей). */
+export function nextPaymentDate(rule: PayDayRule, from: Date = new Date()): Date {
+  const today = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const thisMonth = paymentDateInMonth(today, rule);
+  if (thisMonth >= today) return thisMonth;
+  return paymentDateInMonth(addMonths(today, 1), rule);
 }
