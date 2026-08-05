@@ -36,6 +36,8 @@ interface DataState {
   undoImport: (importId: UUID) => Promise<void>;
   setTransactionCategory: (txId: UUID, categoryId: UUID | null) => Promise<void>;
   deleteTransaction: (txId: UUID) => Promise<void>;
+  /** Пересчитать категории у операций, которым их не выставляли вручную. Возвращает число изменённых. */
+  recategorize: () => Promise<number>;
 
   addCategory: (name: string, kind: TxType, color: string) => Promise<void>;
   updateCategory: (id: UUID, patch: Partial<Category>) => Promise<void>;
@@ -197,6 +199,36 @@ export const useData = create<DataState>((set, get) => ({
     set({
       snapshot: { ...snapshot, transactions: snapshot.transactions.filter((t) => t.id !== txId) },
     });
+  },
+
+  async recategorize() {
+    const { snapshot } = get();
+    const updates = new Map<UUID, UUID | null>();
+
+    for (const tx of snapshot.transactions) {
+      if (tx.category_manual) continue;
+      const next = guessCategoryId(snapshot.categories, {
+        type: tx.type,
+        description: tx.description,
+        rawCategory: tx.raw_category,
+        mcc: tx.mcc,
+      });
+      if (next !== tx.category_id) updates.set(tx.id, next);
+    }
+
+    for (const [id, categoryId] of updates) {
+      await repo.updateRow('transactions', id, { category_id: categoryId });
+    }
+
+    set({
+      snapshot: {
+        ...snapshot,
+        transactions: snapshot.transactions.map((tx) =>
+          updates.has(tx.id) ? { ...tx, category_id: updates.get(tx.id)! } : tx,
+        ),
+      },
+    });
+    return updates.size;
   },
 
   async addCategory(name, kind, color) {

@@ -173,6 +173,21 @@ supabase/schema.sql   таблицы, индексы, RLS-политики, тр
 
 Полный SQL: [`supabase/schema.sql`](supabase/schema.sql).
 
+### Данные предыдущей версии
+
+В проекте Supabase остались таблицы `transactions_legacy`, `goals_legacy`, `debts_legacy`,
+`vacation_settings_legacy` — это схема прошлого приложения. Ничего не удалялось: 22 операции,
+цель и настройки отпуска перенесены в новые таблицы, а старые лежат рядом как резервная копия.
+Когда убедитесь, что всё на месте, их можно удалить:
+
+```sql
+drop table public.transactions_legacy, public.debts_legacy, public.goals_legacy, public.vacation_settings_legacy;
+```
+
+У перенесённых операций `dedup_hash` начинается с `legacy:` — они заводились вручную, а не из
+выписки, поэтому в дедупликацию по хэшу выписки не попадают. Если те же операции придут в
+CSV из банка, они могут задвоиться — лишнее удаляется на вкладке «Операции».
+
 ---
 
 ## Подключение Supabase (5 минут)

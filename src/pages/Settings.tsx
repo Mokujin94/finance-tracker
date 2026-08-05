@@ -17,7 +17,9 @@ export default function Settings() {
     addCategory,
     updateCategory,
     deleteCategory,
+    recategorize,
   } = useData();
+  const [recategorized, setRecategorized] = useState<number | null>(null);
   const profile = snapshot.profile;
 
   const [form, setForm] = useState({
@@ -248,9 +250,27 @@ export default function Settings() {
             </li>
           ))}
         </ul>
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+          <Button
+            variant="soft"
+            onClick={async () => {
+              setRecategorized(await recategorize());
+            }}
+          >
+            Пересчитать категории
+          </Button>
+          {recategorized !== null && (
+            <span className="text-sm text-slate-500">
+              {recategorized > 0 ? `Обновлено операций: ${recategorized}` : 'Все категории и так на месте'}
+            </span>
+          )}
+        </div>
+
         <p className="mt-3 text-xs text-slate-400">
           Ключевые слова используются при импорте: если описание операции содержит слово, ей
           присваивается эта категория. Вручную выбранная категория операции не перезаписывается.
+          «Пересчитать категории» применяет текущие правила ко всем операциям, кроме тех, где
+          категорию выставили руками.
         </p>
       </Card>
 
