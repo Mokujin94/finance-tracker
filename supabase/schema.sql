@@ -179,3 +179,7 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Функция нужна только триггеру. Без этого она торчит наружу как RPC-эндпоинт
+-- /rest/v1/rpc/handle_new_user, доступный анониму (ловится линтером Supabase).
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
