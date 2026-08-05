@@ -52,10 +52,13 @@ export class LocalRepo implements Repo {
     const list = data[field] as unknown as T[];
 
     if (table === 'transactions') {
-      const seen = new Set((list as unknown as Transaction[]).map((t) => t.dedup_hash));
+      // Дедупликация в пределах счёта — как уникальный индекс в Supabase:
+      // одинаковая покупка по картам разных банков это две разные операции.
+      const key = (t: Transaction) => `${t.account_id ?? 'none'}|${t.dedup_hash}`;
+      const seen = new Set((list as unknown as Transaction[]).map(key));
       for (const row of rows as unknown as Transaction[]) {
-        if (seen.has(row.dedup_hash)) continue;
-        seen.add(row.dedup_hash);
+        if (seen.has(key(row))) continue;
+        seen.add(key(row));
         (list as unknown as Transaction[]).push(row);
       }
     } else {

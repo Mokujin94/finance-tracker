@@ -80,10 +80,12 @@ export class SupabaseRepo implements Repo {
   async insertRows<T extends { id: UUID }>(table: TableName, rows: T[]): Promise<void> {
     if (rows.length === 0) return;
     if (table === 'transactions') {
-      // Дедупликация на уровне БД: уникальный индекс (user_id, dedup_hash)
+      // Дедупликация на уровне БД. Поля должны в точности совпадать с уникальным
+      // индексом transactions_dedup_idx (user_id, account_id, dedup_hash), иначе
+      // Postgres отвечает 42P10: «no unique constraint matching the ON CONFLICT».
       const { error } = await client()
         .from(table)
-        .upsert(rows, { onConflict: 'user_id,dedup_hash', ignoreDuplicates: true });
+        .upsert(rows, { onConflict: 'user_id,account_id,dedup_hash', ignoreDuplicates: true });
       if (error) throw error;
       return;
     }
