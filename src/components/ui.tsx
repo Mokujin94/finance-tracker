@@ -12,7 +12,9 @@ export function Card({
   action?: ReactNode;
 }) {
   return (
-    <section className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}>
+    <section
+      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900 sm:p-5 ${className}`}
+    >
       {(title || action) && (
         <header className="mb-3 flex items-start justify-between gap-3">
           {title && <h2 className="text-sm font-semibold text-slate-500">{title}</h2>}
@@ -28,9 +30,9 @@ type ButtonVariant = 'primary' | 'ghost' | 'danger' | 'soft';
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
   primary: 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-indigo-300',
-  soft: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-  ghost: 'text-slate-500 hover:bg-slate-100',
-  danger: 'bg-rose-50 text-rose-600 hover:bg-rose-100',
+  soft: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700',
+  ghost: 'text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+  danger: 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:hover:bg-rose-500/25',
 };
 
 export function Button({
@@ -65,7 +67,7 @@ export function Field({
 }
 
 const CONTROL =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/20';
 
 export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${CONTROL} ${className}`} />;
@@ -77,7 +79,7 @@ export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
 
 export function ProgressBar({ value, color = '#4f46e5' }: { value: number; color?: string }) {
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
       <div
         className="h-full rounded-full transition-all"
         style={{ width: `${Math.min(Math.max(value, 0), 1) * 100}%`, background: color }}
@@ -98,7 +100,11 @@ export function Stat({
   tone?: 'default' | 'positive' | 'negative';
 }) {
   const toneClass =
-    tone === 'positive' ? 'text-emerald-600' : tone === 'negative' ? 'text-rose-600' : 'text-slate-900';
+    tone === 'positive'
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : tone === 'negative'
+        ? 'text-rose-600 dark:text-rose-400'
+        : 'text-slate-900 dark:text-slate-100';
   return (
     <div>
       <p className="text-xs font-medium text-slate-500">{label}</p>
@@ -110,8 +116,8 @@ export function Stat({
 
 export function Empty({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center">
-      <p className="text-sm font-medium text-slate-600">{title}</p>
+    <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center dark:border-slate-700">
+      <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{title}</p>
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
     </div>
   );
@@ -125,11 +131,11 @@ export function Badge({
   tone?: 'slate' | 'green' | 'red' | 'amber' | 'indigo';
 }) {
   const tones: Record<string, string> = {
-    slate: 'bg-slate-100 text-slate-600',
-    green: 'bg-emerald-50 text-emerald-700',
-    red: 'bg-rose-50 text-rose-600',
-    amber: 'bg-amber-50 text-amber-700',
-    indigo: 'bg-indigo-50 text-indigo-700',
+    slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    green: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+    red: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
+    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+    indigo: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
   };
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}>
@@ -152,10 +158,13 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl dark:bg-slate-900 sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold">{title}</h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
             ✕
           </button>
         </div>

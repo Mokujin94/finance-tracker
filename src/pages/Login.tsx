@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Field, Input } from '../components/ui';
+import ThemeToggle from '../components/ThemeToggle';
 import { useAuth } from '../store/auth';
 
 export default function Login() {
@@ -21,10 +22,11 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
+    <div className="relative flex min-h-full items-center justify-center p-4">
+      <ThemeToggle className="absolute top-4 right-4" />
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+        className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
       >
         <h1 className="text-xl font-semibold tracking-tight">Финансовый трекер</h1>
         <p className="mt-1 text-sm text-slate-500">
@@ -60,9 +62,15 @@ export default function Login() {
           </Field>
         </div>
 
-        {error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+        {error && (
+          <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+            {error}
+          </p>
+        )}
         {notice && (
-          <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>
+          <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+            {notice}
+          </p>
         )}
 
         <Button type="submit" disabled={busy} className="mt-5 w-full">
@@ -76,7 +84,7 @@ export default function Login() {
             setNotice(null);
             setMode(mode === 'signin' ? 'signup' : 'signin');
           }}
-          className="mt-3 w-full text-center text-sm text-slate-500 hover:text-slate-700"
+          className="mt-3 w-full text-center text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
         >
           {mode === 'signin' ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
         </button>

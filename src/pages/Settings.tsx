@@ -183,11 +183,11 @@ export default function Settings() {
             />
           </Field>
         </div>
-        <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+        <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
           Сверились с банком — впишите свежую сумму: момент подставится текущий, и импорт старых
           выписок баланс не тронет. Операции до этого момента считаются уже учтёнными в сумме.
         </p>
-        <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
+        <label className="mt-3 flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
           <input
             type="checkbox"
             className="mt-0.5"
@@ -214,7 +214,7 @@ export default function Settings() {
 
       <Card title="Отпуск">
         {form.employment_date ? (
-          <div className="mb-4 grid gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 sm:grid-cols-3">
+          <div className="mb-4 grid gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 sm:grid-cols-3">
             <p>
               Отработано <b>{vacation.monthsWorked} мес.</b>
             </p>
@@ -277,7 +277,7 @@ export default function Settings() {
                 type="color"
                 value={category.color}
                 onChange={(e) => void updateCategory(category.id, { color: e.target.value })}
-                className="h-7 w-7 cursor-pointer rounded border border-slate-200"
+                className="h-7 w-7 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
                 title="Цвет категории"
               />
               <Input
@@ -311,7 +311,7 @@ export default function Settings() {
             </li>
           ))}
         </ul>
-        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
           <Button
             variant="soft"
             onClick={async () => {

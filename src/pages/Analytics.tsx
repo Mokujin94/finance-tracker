@@ -122,7 +122,10 @@ export default function Analytics() {
       <Card title="Рекомендации">
         <ul className="space-y-2 text-sm">
           {rating.recommendations.map((tip) => (
-            <li key={tip} className="rounded-xl bg-indigo-50/60 p-3 text-indigo-900">
+            <li
+              key={tip}
+              className="rounded-xl bg-indigo-50/60 p-3 text-indigo-900 dark:bg-indigo-500/15 dark:text-indigo-200"
+            >
               {tip}
             </li>
           ))}
@@ -146,7 +149,7 @@ export default function Analytics() {
               </thead>
               <tbody>
                 {forecasts.map((forecast) => (
-                  <tr key={forecast.goal.id} className="border-t border-slate-100">
+                  <tr key={forecast.goal.id} className="border-t border-slate-100 dark:border-slate-800">
                     <td className="py-2 pr-3 font-medium">{forecast.goal.title}</td>
                     <td className="py-2 pr-3">{money(forecast.requiredPerMonth)}</td>
                     <td className="py-2 pr-3">{money(forecast.projectedPerMonth)}</td>

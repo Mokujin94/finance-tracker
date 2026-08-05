@@ -40,7 +40,7 @@ export default function App() {
   if (error) {
     return (
       <div className="mx-auto max-w-md p-8">
-        <p className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">
+        <p className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
           Не удалось загрузить данные: {error}
         </p>
       </div>

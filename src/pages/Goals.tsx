@@ -93,13 +93,13 @@ export default function Goals() {
                   <span className="text-slate-400">({percent(forecast.progress)})</span>
                 </p>
                 {forecast.borrowed > 0 && (
-                  <p className="mt-1 text-xs text-amber-700">
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                     из них {money(forecast.borrowed)} — заёмные деньги (долг привязан к цели)
                   </p>
                 )}
               </div>
 
-              <dl className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+              <dl className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/70">
                 <div>
                   <dt className="text-xs text-slate-500">Нужно в месяц</dt>
                   <dd className="font-semibold">{money(forecast.requiredPerMonth)}</dd>
@@ -150,7 +150,7 @@ export default function Goals() {
                             {fmtDay(contribution.occurred_on)}
                             {contribution.note ? ` · ${contribution.note}` : ''}
                           </span>
-                          <span className="font-medium text-slate-700">
+                          <span className="font-medium text-slate-700 dark:text-slate-200">
                             {money(contribution.amount)}
                           </span>
                         </li>

@@ -127,7 +127,7 @@ export default function Transactions() {
                       ? 'text-slate-400 line-through'
                       : tx.type === 'income'
                         ? 'text-emerald-600'
-                        : 'text-slate-900'
+                        : 'text-slate-900 dark:text-slate-100'
                   }`}
                 >
                   {tx.type === 'income' ? '+' : '−'}

@@ -116,7 +116,7 @@ export default function Debts() {
               const goal = snapshot.goals.find((g) => g.id === view.debt.goal_id);
               const payments = snapshot.debtPayments.filter((p) => p.debt_id === view.debt.id);
               return (
-                <li key={view.debt.id} className="rounded-xl border border-slate-100 p-3">
+                <li key={view.debt.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium">
@@ -129,7 +129,7 @@ export default function Debts() {
                         {view.debt.comment ? ` · ${view.debt.comment}` : ''}
                       </p>
                       {goal && (
-                        <p className="mt-1 text-xs text-amber-700">
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                           привязан к цели «{goal.title}» — часть суммы цели закрыта заёмными деньгами
                         </p>
                       )}
@@ -174,7 +174,7 @@ export default function Debts() {
                                 {payment.note ? ` · ${payment.note}` : ''}
                               </span>
                               <span className="flex items-center gap-2">
-                                <b className="text-slate-700">{money(payment.amount)}</b>
+                                <b className="text-slate-700 dark:text-slate-200">{money(payment.amount)}</b>
                                 <button
                                   onClick={() => void deleteDebtPayment(payment.id)}
                                   className="text-slate-300 hover:text-rose-600"

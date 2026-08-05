@@ -106,7 +106,7 @@ export default function ImportPage() {
 
       <Card>
         <label
-          className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 px-4 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40"
+          className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 px-4 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-slate-700 dark:hover:border-indigo-500 dark:hover:bg-indigo-500/10"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -136,7 +136,7 @@ export default function ImportPage() {
 
         {progress && <p className="mt-3 text-sm text-slate-500">{progress}</p>}
         {result && (
-          <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
+          <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
             Загружено файлов: {result.files}. Импортировано операций: {result.added}. Дубликатов
             пропущено: {result.duplicates}.
           </p>
@@ -161,7 +161,7 @@ export default function ImportPage() {
             {files.map((file, index) => (
               <li
                 key={`${file.filename}-${index}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/70"
               >
                 <span className="truncate font-medium">{file.filename}</span>
                 <span className="flex items-center gap-2">
@@ -211,7 +211,7 @@ export default function ImportPage() {
                 {preview.map((row) => {
                   const transfer = transferHashes.has(row.dedupHash);
                   return (
-                    <tr key={row.dedupHash} className="border-t border-slate-100">
+                    <tr key={row.dedupHash} className="border-t border-slate-100 dark:border-slate-800">
                       <td className="py-1.5 pr-3 whitespace-nowrap text-slate-500">
                         {fmtDay(row.occurredAt)}
                       </td>
@@ -226,7 +226,7 @@ export default function ImportPage() {
                             ? 'text-slate-400'
                             : row.type === 'income'
                               ? 'text-emerald-600'
-                              : 'text-slate-900'
+                              : 'text-slate-900 dark:text-slate-100'
                         }`}
                       >
                         {row.type === 'income' ? '+' : '−'}

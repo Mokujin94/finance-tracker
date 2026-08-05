@@ -81,7 +81,7 @@ export default function Dashboard() {
         </div>
         <Link
           to="/analytics"
-          className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+          className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300 dark:hover:bg-indigo-500/25"
         >
           Рейтинг {rating.enoughData ? `${rating.score} / 5` : '— нет данных'} →
         </Link>
@@ -247,7 +247,7 @@ export default function Dashboard() {
               <Stat label="Мне должны" value={money(totals.owedToMe)} tone="positive" />
             </div>
             {views.some((v) => v.overdue) && (
-              <p className="mt-3 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-700">
+              <p className="mt-3 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
                 Есть просроченные долги — проверьте раздел «Долги».
               </p>
             )}

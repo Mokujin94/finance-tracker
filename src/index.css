@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-ink-50: #f8fafc;
   --color-ink-100: #f1f5f9;
@@ -19,8 +21,34 @@ body,
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-slate-50 text-slate-900 antialiased transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100;
   font-family: ui-sans-serif, system-ui, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+::selection {
+  background-color: #c7d2fe;
+  color: #1e1b4b;
+}
+
+.dark ::selection {
+  background-color: rgb(99 102 241 / 40%);
+  color: #fff;
+}
+
+.dark .recharts-cartesian-axis-tick-value,
+.dark .recharts-legend-item-text {
+  fill: #94a3b8;
+  color: #94a3b8 !important;
+}
+
+.dark .recharts-default-tooltip {
+  border-color: #334155 !important;
+  background-color: #0f172a !important;
+}
+
+.dark .recharts-tooltip-label,
+.dark .recharts-tooltip-item {
+  color: #e2e8f0 !important;
 }
 
 /* Скрываем спиннеры у числовых полей */

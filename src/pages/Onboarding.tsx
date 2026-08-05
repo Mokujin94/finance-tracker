@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VacationCalendar from '../components/VacationCalendar';
+import ThemeToggle from '../components/ThemeToggle';
 import { Button, Card, Field, Input } from '../components/ui';
 import { fmtDay, fromLocalInput, nextPaymentDate, nowISO, toLocalInput } from '../lib/dates';
 import { days, money } from '../lib/format';
@@ -67,7 +68,8 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="mx-auto max-w-lg p-4 py-8">
+    <div className="relative mx-auto max-w-lg p-4 py-8">
+      <ThemeToggle className="absolute top-4 right-4" />
       <h1 className="text-2xl font-semibold tracking-tight">Настроим приложение</h1>
       <p className="mt-1 text-sm text-slate-500">
         Три коротких шага. Всё это потом можно поменять в настройках.
@@ -77,7 +79,7 @@ export default function Onboarding() {
         {STEPS.map((label, index) => (
           <div key={label} className="flex-1">
             <div
-              className={`h-1.5 rounded-full ${index <= step ? 'bg-indigo-600' : 'bg-slate-200'}`}
+              className={`h-1.5 rounded-full ${index <= step ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
             />
             <p
               className={`mt-1.5 text-[11px] ${index === step ? 'text-indigo-600' : 'text-slate-400'}`}
@@ -147,7 +149,7 @@ export default function Onboarding() {
             </Field>
           </div>
 
-          <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
+          <label className="mt-3 flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
               className="mt-0.5"
@@ -163,7 +165,7 @@ export default function Onboarding() {
           </label>
 
           {monthlyIncome > 0 && (
-            <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+            <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
               <p>
                 Доход в месяц: <b>{money(monthlyIncome)}</b>
               </p>
@@ -197,7 +199,7 @@ export default function Onboarding() {
             </div>
 
             {employmentDate && (
-              <div className="mt-3 space-y-1 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+              <div className="mt-3 space-y-1 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <p>
                   Отработано: <b>{vacation.monthsWorked} мес.</b> · накоплено{' '}
                   <b>{days(vacation.accruedDays)}</b> отпуска
@@ -255,7 +257,7 @@ export default function Onboarding() {
               />
             </Field>
           </div>
-          <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+          <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
             Это та сумма, которую вы видите в банке сейчас — в ней уже учтены все прошлые операции.
             Поэтому импорт выписки за прошлые периоды баланс <b>не меняет</b>: старые операции идут
             только в статистику и графики. Уменьшать или увеличивать баланс будут лишь операции,

@@ -112,7 +112,7 @@ export default function VacationCalendar({ plans, onAdd, onDelete, availableDays
                     : isPreview
                       ? 'bg-indigo-100 text-indigo-700'
                       : isSameMonth(day, cursor)
-                        ? 'hover:bg-slate-100'
+                        ? 'hover:bg-slate-100 dark:hover:bg-slate-800'
                         : 'text-slate-300'
               }`}
             >
@@ -138,7 +138,7 @@ export default function VacationCalendar({ plans, onAdd, onDelete, availableDays
             .map((plan) => (
               <div
                 key={plan.id}
-                className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/70"
               >
                 <span>
                   {fmtDay(plan.start_date)} — {fmtDay(plan.end_date)}{' '}
