@@ -14,7 +14,7 @@ import {
   ComposedChart,
 } from 'recharts';
 import { Badge, Card, Empty, ProgressBar, Stat } from '../components/ui';
-import { fmtDay, monthKey, monthLabel } from '../lib/dates';
+import { fmtDay, fmtDayTime, monthKey, monthLabel } from '../lib/dates';
 import { days, money, percent } from '../lib/format';
 import {
   categoryBreakdown,
@@ -93,7 +93,9 @@ export default function Dashboard() {
             label="Текущий баланс"
             value={money(balance)}
             tone={balance < 0 ? 'negative' : 'default'}
-            hint={profile ? `с учётом остатка на ${fmtDay(profile.balance_as_of)}` : undefined}
+            hint={
+              profile ? `остаток на ${fmtDayTime(profile.balance_as_of)} + операции после` : undefined
+            }
           />
         </Card>
         <Card>

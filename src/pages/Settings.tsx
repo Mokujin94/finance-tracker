@@ -2,7 +2,7 @@ import { useState } from 'react';
 import VacationCalendar from '../components/VacationCalendar';
 import { Badge, Button, Card, Field, Input, Select } from '../components/ui';
 import { cloudMode } from '../data';
-import { fmtDay, todayISO } from '../lib/dates';
+import { fmtDay, fromLocalInput, nowISO, toLocalInput, todayISO } from '../lib/dates';
 import { days, money } from '../lib/format';
 import { computeVacation } from '../logic/vacation';
 import type { TxType } from '../types';
@@ -30,7 +30,7 @@ export default function Settings() {
     employment_date: profile?.employment_date ?? '',
     vacation_used_days: String(profile?.vacation_used_days ?? 0),
     balance_start: String(profile?.balance_start ?? 0),
-    balance_as_of: profile?.balance_as_of ?? todayISO(),
+    balance_as_of: toLocalInput(profile?.balance_as_of ?? nowISO()),
   });
   const [saved, setSaved] = useState(false);
 
@@ -52,7 +52,7 @@ export default function Settings() {
       employment_date: form.employment_date || null,
       vacation_used_days: Number(form.vacation_used_days) || 0,
       balance_start: Number(form.balance_start) || 0,
-      balance_as_of: form.balance_as_of || todayISO(),
+      balance_as_of: fromLocalInput(form.balance_as_of),
       onboarded: true,
     });
     setSaved(true);
@@ -131,17 +131,27 @@ export default function Settings() {
             <Input
               type="number"
               value={form.balance_start}
-              onChange={(e) => setForm({ ...form, balance_start: e.target.value })}
+              onChange={(e) =>
+                // Назвали новую сумму — значит, она актуальна на сейчас
+                setForm({ ...form, balance_start: e.target.value, balance_as_of: toLocalInput(nowISO()) })
+              }
             />
           </Field>
-          <Field label="На какую дату" hint="Баланс = остаток + операции после этой даты">
+          <Field
+            label="На какой момент"
+            hint="Баланс меняют только операции после этого момента"
+          >
             <Input
-              type="date"
+              type="datetime-local"
               value={form.balance_as_of}
               onChange={(e) => setForm({ ...form, balance_as_of: e.target.value })}
             />
           </Field>
         </div>
+        <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+          Сверились с банком — впишите свежую сумму: момент подставится текущий, и импорт старых
+          выписок баланс не тронет. Операции до этого момента считаются уже учтёнными в сумме.
+        </p>
         <div className="mt-4 flex items-center gap-3">
           <Button onClick={() => void save()}>Сохранить</Button>
           <span className="text-sm text-slate-500">

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VacationCalendar from '../components/VacationCalendar';
 import { Button, Card, Field, Input } from '../components/ui';
-import { fmtDay, todayISO } from '../lib/dates';
+import { fmtDay, fromLocalInput, nowISO, toLocalInput } from '../lib/dates';
 import { days, money } from '../lib/format';
 import { computeVacation } from '../logic/vacation';
 import { useData } from '../store/data';
@@ -22,7 +22,7 @@ export default function Onboarding() {
   const [employmentDate, setEmploymentDate] = useState(profile?.employment_date ?? '');
   const [vacationUsed, setVacationUsed] = useState(String(profile?.vacation_used_days ?? 0));
   const [balanceStart, setBalanceStart] = useState(String(profile?.balance_start ?? ''));
-  const [balanceAsOf, setBalanceAsOf] = useState(profile?.balance_as_of ?? todayISO());
+  const [balanceAsOf, setBalanceAsOf] = useState(toLocalInput(profile?.balance_as_of ?? nowISO()));
   const [saving, setSaving] = useState(false);
 
   const vacation = computeVacation(
@@ -43,7 +43,7 @@ export default function Onboarding() {
       employment_date: employmentDate || null,
       vacation_used_days: Number(vacationUsed) || 0,
       balance_start: Number(balanceStart) || 0,
-      balance_as_of: balanceAsOf || todayISO(),
+      balance_as_of: fromLocalInput(balanceAsOf),
       onboarded: true,
     });
     setSaving(false);
@@ -192,14 +192,20 @@ export default function Onboarding() {
                 placeholder="50000"
               />
             </Field>
-            <Field label="На какую дату" hint="Операции из выписки после этой даты изменят баланс">
+            <Field label="На какой момент" hint="По умолчанию — прямо сейчас">
               <Input
-                type="date"
+                type="datetime-local"
                 value={balanceAsOf}
                 onChange={(e) => setBalanceAsOf(e.target.value)}
               />
             </Field>
           </div>
+          <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+            Это та сумма, которую вы видите в банке сейчас — в ней уже учтены все прошлые операции.
+            Поэтому импорт выписки за прошлые периоды баланс <b>не меняет</b>: старые операции идут
+            только в статистику и графики. Уменьшать или увеличивать баланс будут лишь операции,
+            которые произойдут после указанного момента.
+          </p>
           <p className="mt-3 text-sm text-slate-500">
             Дальше загрузите выписку Т-Банка на вкладке «Импорт» — категории и графики заполнятся
             автоматически.

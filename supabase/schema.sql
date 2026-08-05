@@ -14,7 +14,8 @@ create table if not exists public.profiles (
   employment_date    date,
   vacation_used_days numeric(6, 2)  not null default 0,
   balance_start      numeric(14, 2) not null default 0,
-  balance_as_of      date           not null default current_date,
+  -- момент, на который назван остаток: баланс меняют только операции после него
+  balance_as_of      timestamptz    not null default now(),
   onboarded          boolean        not null default false,
   created_at         timestamptz    not null default now()
 );

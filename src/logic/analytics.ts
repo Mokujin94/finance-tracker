@@ -13,12 +13,16 @@ import type {
 
 /* ------------------------------- Баланс -------------------------------- */
 
-/** Текущий баланс = стартовый остаток из профиля + все операции после даты остатка. */
+/**
+ * Текущий баланс = остаток, названный пользователем, плюс операции строго ПОСЛЕ момента,
+ * на который он назван. Операции до этого момента банк уже учёл в названной сумме —
+ * если считать их снова, импорт старой выписки «съест» баланс.
+ */
 export function currentBalance(profile: Profile | null, transactions: Transaction[]): number {
   if (!profile) return 0;
-  const since = toDate(profile.balance_as_of);
+  const since = toDate(profile.balance_as_of).getTime();
   return transactions.reduce((sum, tx) => {
-    if (toDate(tx.occurred_at) < since) return sum;
+    if (toDate(tx.occurred_at).getTime() <= since) return sum;
     return sum + (tx.type === 'income' ? tx.amount : -tx.amount);
   }, profile.balance_start);
 }

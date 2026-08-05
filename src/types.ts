@@ -15,9 +15,13 @@ export interface Profile {
   employment_date: string | null;
   /** Уже использовано дней отпуска */
   vacation_used_days: number;
-  /** Стартовый остаток на счетах, ₽ */
+  /** Остаток на счетах, введённый пользователем, ₽ */
   balance_start: number;
-  /** Дата, на которую актуален balance_start (ISO) */
+  /**
+   * Момент (ISO datetime), на который указан balance_start.
+   * Баланс меняют только операции, произошедшие строго ПОСЛЕ этого момента:
+   * всё, что было раньше, банк уже учёл в названной сумме.
+   */
   balance_as_of: string;
   /** Онбординг пройден */
   onboarded: boolean;

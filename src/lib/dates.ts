@@ -13,6 +13,22 @@ export function todayISO(): string {
   return format(new Date(), ISO_DAY);
 }
 
+export function nowISO(): string {
+  return new Date().toISOString();
+}
+
+/** Значение для <input type="datetime-local"> из ISO-строки. */
+export function toLocalInput(iso: string): string {
+  const date = toDate(iso);
+  return format(date, "yyyy-MM-dd'T'HH:mm");
+}
+
+/** Обратное преобразование: значение datetime-local → ISO. */
+export function fromLocalInput(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? nowISO() : date.toISOString();
+}
+
 export function toDate(iso: string | Date): Date {
   return iso instanceof Date ? iso : parseISO(iso);
 }
